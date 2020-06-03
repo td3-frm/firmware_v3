@@ -24,7 +24,7 @@ int main(void)
 
    while (1) {
       Board_LED_Toggle(LED_2);
-      delay(100);
-      printf("Hola mundo at %d\r\n", tick_ct);
+      delay(500);
+      printf("Hola mundo at %d \r\n", tick_ct);
    }
 }

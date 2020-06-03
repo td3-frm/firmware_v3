@@ -1,0 +1,107 @@
+/* Copyright 2017
+        codigo basado en el libro Sistemas Empotrados en tiempo real 
+1.5     Procesamiento Secuecial (Pagina 8)
+1.5.1 Ejemplo: Un Termostato digital
+se muestra un ejemplo sencillo de un sistema en tiempo real implantado mediante 
+procesamiento secuencial. El sistema es un termostato para la calefacción. 
+Como se puede observar, el sistema consta de cuatro tareas que se ejecutan continuamente:
+- La primera verifica si hay alguna tecla pulsada (UP o DOWN) y en caso
+afirmativo modifica la consigna de temperatura. Si no hay ninguna
+tecla pulsada, simplemente termina de ejecutarse (no bloqueo).
+- La segunda tarea realiza una medida de la temperatura de la habitación.
+- La tercera ejecuta el control. Éste puede ser un control sencillo todo/nada, 
+consistente en que si la temperatura es mayor que la consigna
+se apaga la calefacción y si es inferior se enciende.
+- Por último, la cuarta tarea se encarga de encender o apagar la cale-
+facción en función de la salida de la tarea de control
+ */
+
+/*==================[inclusions]=============================================*/
+
+#include "sapi.h"
+
+/*==================[macros and definitions]=================================*/
+
+/*==================[internal data declaration]==============================*/
+
+/*==================[internal functions declaration]=========================*/
+
+/*==================[internal data definition]===============================*/
+
+DEBUG_PRINT_ENABLE
+CONSOLE_PRINT_ENABLE
+
+/*==================[external data definition]===============================*/
+
+/*==================[internal functions definition]==========================*/
+
+// FUNCION PRINCIPAL, PUNTO DE ENTRADA AL PROGRAMA LUEGO DE ENCENDIDO O RESET.
+int main( void )
+{
+
+   // ---------- CONFIGURACIONES ------------------------------
+   // libs/sapi/sapi_v0.5.2/board/inc/sapi_peripheral_map.h
+
+   // Inicializar y configurar la plataforma
+   boardConfig();
+
+   // Inicializar UART_USB como salida Serial de debug 
+   debugPrintConfigUart( UART_USB, 115200 );
+   debugPrintlnString( "DEBUG: UART_USB configurada." );
+
+   // Inicializar UART_232 como salida Serial de consola
+   consolePrintConfigUart( UART_232, 115200 );
+   consolePrintlnString( "UART_232 configurada." );
+   // Crear varias variables del tipo booleano
+   bool_t tec1Value = OFF;
+   bool_t ledbValue = OFF;
+
+
+   // ---------- REPETIR POR SIEMPRE --------------------------
+   while( TRUE ) {
+      /* Si se presiona TEC1, enciende el LEDR */
+
+      // Leer pin conectado a la tecla.
+      tec1Value = gpioRead( TEC1 );
+      // Invertir el valor leido, pues lee un 0 (OFF) con tecla
+      // presionada y 1 (ON) al liberarla.
+      tec1Value = !tec1Value;
+      // Escribir el valor leido en el LED correspondiente.
+      gpioWrite( LED3, tec1Value );
+
+      gpioToggle( LEDB );
+
+      // Leer el estado del pin conectado al led
+      ledbValue = gpioRead( LEDB );
+
+      // Chequear si el valor leido es encedido
+      if( ledbValue == ON ) {
+         // Si esta encendido mostrar por UART_USB "LEDB encendido."
+         debugPrintlnString( "DEBUG: LEDB encendido." );
+         consolePrintlnString( "LEDB encendido." );
+         consolePrintEnter();
+      } else {
+         // Si esta apagado mostrar por UART_USB "LEDB apagado."
+         debugPrintlnString( "DEBUG: LEDB apagado." );
+         consolePrintlnString( "LEDB apagado." );
+         consolePrintEnter();
+      }
+
+      /* Retardo bloqueante durante 250ms */
+
+
+      delay( 500 );
+   }
+
+   // NO DEBE LLEGAR NUNCA AQUI, debido a que a este programa se ejecuta
+   // directamenteno sobre un microcontroladore y no es llamado por ningun
+   // Sistema Operativo, como en el caso de un programa para PC.
+   return 0;
+}
+
+
+
+/*==================[external functions definition]==========================*/
+
+
+/*==================[end of file]============================================*/

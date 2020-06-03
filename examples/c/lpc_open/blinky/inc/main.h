@@ -51,7 +51,7 @@ extern "C" {
 #define DELAY_MS 500
 
 /** led number to toggle */
-#define LED 0
+#define LED 2
 
 /*==================[typedef]================================================*/
 

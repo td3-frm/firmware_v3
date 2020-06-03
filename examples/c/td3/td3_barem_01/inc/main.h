@@ -30,76 +30,46 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  */
- 
-/** @brief This is a simple blink example.
- */
+
+#ifndef _MAIN_H_
+#define _MAIN_H_
 
 /** \addtogroup blink Bare-metal blink example
  ** @{ */
 
 /*==================[inclusions]=============================================*/
 
-#include "main.h"
-#include "board.h"
+/*==================[cplusplus]==============================================*/
 
-/*==================[macros and definitions]=================================*/
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/*==================[internal data declaration]==============================*/
+/*==================[macros]=================================================*/
 
-/*==================[internal functions declaration]=========================*/
+/** delay in milliseconds */
+#define DELAY_MS 500
 
-/** @brief hardware initialization function
- *	@return none
+/** led number to toggle */
+#define LED 0
+
+/*==================[typedef]================================================*/
+
+/*==================[external data declaration]==============================*/
+
+/*==================[external functions declaration]=========================*/
+
+/** @brief main function
+ * @return main function should never return
  */
-static void initHardware(void);
+int main(void);
 
-/** @brief delay function
- * @param t desired milliseconds to wait
- */
-static void pausems(uint32_t t);
+/*==================[cplusplus]==============================================*/
 
-/*==================[internal data definition]===============================*/
-
-/** @brief used for delay counter */
-static volatile uint32_t pausems_count = 500;
-
-/*==================[external data definition]===============================*/
-
-/*==================[internal functions definition]==========================*/
-
-static void initHardware(void)
-{
-	Board_Init();
-	SystemCoreClockUpdate();
-	SysTick_Config(SystemCoreClock / 1000);
+#ifdef __cplusplus
 }
-
-static void pausems(uint32_t t)
-{
-	pausems_count = t;
-	while (pausems_count != 0) {
-		__WFI();
-	}
-}
-
-/*==================[external functions definition]==========================*/
-
-void SysTick_Handler(void)
-{
-	if(pausems_count > 0) pausems_count--;
-}
-
-int main(void)
-{
-	initHardware();
-
-	while (1)
-	{
-		Board_LED_Toggle(LED_3);
-		pausems(DELAY_MS);
-	}
-}
+#endif
 
 /** @} doxygen end group definition */
-
 /*==================[end of file]============================================*/
+#endif /* #ifndef _MAIN_H_ */

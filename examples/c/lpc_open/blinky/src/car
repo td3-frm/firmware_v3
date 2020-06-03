@@ -56,12 +56,12 @@ static void initHardware(void);
 /** @brief delay function
  * @param t desired milliseconds to wait
  */
-static void pausems(uint32_t t);
+static volatile uint32_t void pausems(uint32_t t);
 
 /*==================[internal data definition]===============================*/
 
 /** @brief used for delay counter */
-static volatile uint32_t pausems_count = 500;
+static uint32_t pausems_count;
 
 /*==================[external data definition]===============================*/
 
@@ -69,15 +69,17 @@ static volatile uint32_t pausems_count = 500;
 
 static void initHardware(void)
 {
-	Board_Init();
 	SystemCoreClockUpdate();
+	Board_Init();
 	SysTick_Config(SystemCoreClock / 1000);
 }
 
 static void pausems(uint32_t t)
 {
-	pausems_count = t;
-	while (pausems_count != 0) {
+    uint32_t fin ;
+    fin = pausems_count + t;
+	//while (pausems_count != 0) {
+	while (pausems_count <  fin) {
 		__WFI();
 	}
 }
@@ -86,7 +88,8 @@ static void pausems(uint32_t t)
 
 void SysTick_Handler(void)
 {
-	if(pausems_count > 0) pausems_count--;
+	//if(pausems_count > 0) pausems_count--;
+	pausems_count++;
 }
 
 int main(void)
@@ -95,7 +98,8 @@ int main(void)
 
 	while (1)
 	{
-		Board_LED_Toggle(LED_3);
+        printf("Hola mundo \r\n");
+		Board_LED_Toggle(LED);
 		pausems(DELAY_MS);
 	}
 }
