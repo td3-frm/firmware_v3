@@ -32,21 +32,19 @@ se cambiaron de nombre las funciones para que se corresponda con td3_freertos_-1
 De acuerdo a la hoja 22,
 El problema que se acaba de exponer se origina al producirse una inte-
 rrupción dentro de lo que se denomina una zona crítica. Por zona crítica
-se entiende toda zona de código en la que se usan recursos 12 compartidos
+se entiende toda zona de código en la que se usan recursos compartidos
 entre dos tareas que se ejecutan de forma asíncrona, como por ejemplo en-
 tre una tarea de primer plano y una de segundo plano, o dos de segundo
 plano.
 Para evitar incoherencias de datos es necesario conseguir que la eje-
 cución de la zona crítica se realice de principio a fin sin ningún tipo de
-interrupción. Por tanto una solución podría ser inhabilitar las interrupcio-
+interrupción. Por tanto una solución podría ser INHABILITAR las interrupcio-
 nes durante la ejecución de la zona crítica:
  */
 
 /*==================[inclusions]=============================================*/
 
 #include "board.h"
-#include "chip.h"
-
 #include "main.h"
 
 /*==================[macros and definitions]=================================*/

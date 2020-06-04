@@ -19,7 +19,6 @@ facción en función de la salida de la tarea de control
 /*==================[inclusions]=============================================*/
 
 #include "board.h"
-//#include "chip.h"
 #include "main.h"
 
 /*==================[macros and definitions]=================================*/
@@ -36,7 +35,7 @@ static void initHardware(void);
 /** @brief delay function
  * @param t desired milliseconds to wait
  */
-static  void pausems(uint32_t t);
+static  void delay(uint32_t t);
 
 
 
@@ -44,13 +43,6 @@ static  void pausems(uint32_t t);
 /** @brief used for delay counter */
 static volatile uint32_t pausems_count;
 
-#define UP 2
-#define DOWN 1
-#define ON 1
-#define OFF 0
-#define HISTERESIS 3
-#define LED_ROJO 4
-#define LED_VERDE 5
 int temp = 0;
 int consigna = 10;
 int convertido = 0;
@@ -68,7 +60,7 @@ static void initHardware(void)
     SysTick_Config(SystemCoreClock / 1000);
 }
 
-static void pausems(uint32_t t)
+static void delay(uint32_t t)
 {
     pausems_count = t;
     while (pausems_count != 0) {
@@ -183,6 +175,7 @@ int main(void)
 		Controlar();
 		ImprimirTemp();
         TareaInactiva();
+        //delay(DELAY_MS);
     }
 }
 

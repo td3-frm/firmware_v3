@@ -49,9 +49,13 @@ extern "C" {
 
 /** delay in milliseconds */
 #define DELAY_MS 500
-
-/** led number to toggle */
-#define LED 0
+#define UP 2
+#define DOWN 1
+#define ON 1
+#define OFF 0
+#define HISTERESIS 3
+#define LED_ROJO 4
+#define LED_VERDE 5
 
 /*==================[typedef]================================================*/
 

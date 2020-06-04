@@ -20,8 +20,6 @@ nota: en minicom velocidad en 300 bauds -> ctr+a z o
 /*==================[inclusions]=============================================*/
 
 #include "board.h"
-#include "chip.h"
-
 #include "main.h"
 
 /*==================[macros and definitions]=================================*/

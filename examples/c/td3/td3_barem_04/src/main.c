@@ -33,8 +33,6 @@ se cambiaron de nombre las funciones para que se corresponda con td3_freertos_-1
 /*==================[inclusions]=============================================*/
 
 #include "board.h"
-#include "chip.h"
-
 #include "main.h"
 
 /*==================[macros and definitions]=================================*/
