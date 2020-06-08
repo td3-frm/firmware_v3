@@ -1,11 +1,10 @@
 /* este codigo NO esta en el libro de Sistemas Empotrados en tiempo real
- * pero el objetivo es intriducir a FreeRTOS usando solo una  tarea que 
+ * pero el objetivo es intriducir a FreeRTOS usando solo una (o dos) tarea que 
  * imprime por el puerto serie, e invocando al planificador
  *
  *  - xTaskCreate()
  *  - vTaskStartScheduler()
- *
- * esto hará un busy waiting ... :-(
+ *  - vTaskDelay(ticks)
  *
  *  */
  /*==================[inclusions]=============================================*/
@@ -43,8 +42,11 @@ static void vTarea(void *pvParameters)
    for ( ;; ){
        printf( pcTaskName );
        //vTaskDelay(en_ticks)
-       vTaskDelay( xDelay500ms );  // tarea pasa a estado Bloqueado hasta que expira timer
-       //vTaskDelay( 1000 / portTICK_RATE_MS);  // tarea pasa a estado Bloqueado hasta que expira timer
+       //vTaskDelay( xDelay500ms );  // tarea pasa a estado Bloqueado hasta que expira timer
+       vTaskDelay( 1000 / portTICK_RATE_MS);  // tarea pasa a estado Bloqueado hasta que expira timer
+       //configTICK_RATE_HZ = 100 en el ../include , 1 tick cada 10 ms
+       //#define portTICK_RATE_MS          ( ( TickType_t ) 1000 / configTICK_RATE_HZ )
+
    }
 }
 
@@ -56,7 +58,7 @@ int main(void)
     //Se inicializa HW
 	/* Se crean las tareas */
 	xTaskCreate(vTarea, (const char *)"Tarea1", TAM_PILA, (void*)pcTextoTarea1, tskIDLE_PRIORITY+1, NULL );
-	xTaskCreate(vTarea, (const char *)"Tarea2", TAM_PILA, (void*)pcTextoTarea2, tskIDLE_PRIORITY+1, NULL );
+	xTaskCreate(vTarea, (const char *)"Tarea2", TAM_PILA, (void*)pcTextoTarea2, tskIDLE_PRIORITY+0, NULL );
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     //Nunca llegara a ese lazo  .... espero

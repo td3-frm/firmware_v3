@@ -27,7 +27,6 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 #include "task.h"
 #include "semphr.h"
 
-#include "main.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -38,7 +37,7 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
  que pasaría si la tarea EnviaEntrada tuviera mas prioridad que la ImprimeHora ?
  */
 #define PRIO_ENV_ENTR 1
-#define TAM_PILA 1024
+#define TAM_PILA configMINIMAL_STACK_SIZE
 
 typedef struct {
 uint8_t hor;
@@ -74,6 +73,12 @@ static void initHardware(void)
 
 uint8_t LeeEntradas(void)
 {
+  if (Board_TEC_GetStatus(BOARD_TEC_1) == 0) return 1;
+  if (Board_TEC_GetStatus(BOARD_TEC_2) == 0) return 2;
+//  if (Board_TEC_GetStatus(BOARD_TEC_3) == 0) return 4;
+//  if (Board_TEC_GetStatus(BOARD_TEC_4) == 0) return 2;
+  else return 0;
+
 	return Buttons_GetStatus();
 }
 
@@ -166,15 +171,15 @@ void RIT_IRQHandler(void)
 	
 	portBASE_TYPE xTaskWoken = pdFALSE ;
 	
-	hora_act .seg ++;
-	if( hora_act .seg == 60){
-		hora_act .seg = 0;
-		hora_act .min ++;
-		if( hora_act .min == 60){
-			hora_act .min = 0;
-			hora_act .hor ++;
-			if( hora_act .hor == 24){
-				hora_act .hor = 0;
+	hora_act.seg ++;
+	if( hora_act.seg == 60){
+		hora_act.seg = 0;
+		hora_act.min ++;
+		if( hora_act.min == 60){
+			hora_act.min = 0;
+			hora_act.hor ++;
+			if( hora_act.hor == 24){
+				hora_act.hor = 0;
 			}
 		}
 	}
@@ -184,10 +189,10 @@ void RIT_IRQHandler(void)
 	/* Borra el flag de interrupción */
 	Chip_RIT_ClearInt(LPC_RITIMER);
 
-	if( xTaskWoken == pdTRUE ){
-		taskYIELD (); /* Si el semáforo ha despertado
-						una tarea , se fuerza un cambio
-						de contexto */
+//	if( xTaskWoken == pdTRUE ){
+//		taskYIELD (); /* Si el semáforo ha despertado
+//						una tarea , se fuerza un cambio
+//						de contexto */
 	}
 }
 
