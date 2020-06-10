@@ -1,69 +1,52 @@
-/* este codigo NO esta en el libro de Sistemas Empotrados en tiempo real
- * pero el objetivo es intriducir a FreeRTOS usando solo una (o dos) tarea que 
- * imprime por el puerto serie, e invocando al planificador
- *
- *  - xTaskCreate()
- *  - vTaskStartScheduler()
- *  - vTaskDelay(ticks)
- *
- *  */
- /*==================[inclusions]=============================================*/
+/*
+algo de manejo de TICKs
+    - vTaskDelay()
+    - pdMS_TO_TICKS
 
-#include "board.h"
+*/
+
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stdio.h"
 
-/*==================[macros and definitions]=================================*/
+/* Demo includes. */
+#include "supporting_functions.h"
 
-#define PRIO_TAREA1 1
-#define PRIO_TAREA2 1
-#define TAM_PILA 150
+/* The task function. */
 
-/*==================[internal data declaration]==============================*/
-
-/*==================[internal functions declaration]=========================*/
-
-/*==================[internal data definition]===============================*/
-const char *pcTextoTarea1 = "Tarea1 is running\r\n";
-const char *pcTextoTarea2 = "Tarea2 is running\r\n";
-
-/*==================[external data definition]===============================*/
-
-/*==================[internal functions definition]==========================*/
-
-static void vTarea(void *pvParameters)
+void vTaskFunction( void *pvParameters )
 {
+   TickType_t xLastWakeTime;
+   const TickType_t xDelay500ms = pdMS_TO_TICKS( 500UL );
 
-   const TickType_t xDelay500ms = pdMS_TO_TICKS( 500UL ); //macro para convertir ms en ticks
-   char *pcTaskName;
-   /* The string to print out is passed in via the parameter.  Cast this to a
-   character pointer. */
-   pcTaskName = ( char * ) pvParameters;
-   for ( ;; ){
-       printf( pcTaskName );
-       //vTaskDelay(en_ticks)
-       //vTaskDelay( xDelay500ms );  // tarea pasa a estado Bloqueado hasta que expira timer
-       vTaskDelay( 1000 / portTICK_RATE_MS);  // tarea pasa a estado Bloqueado hasta que expira timer
-       //configTICK_RATE_HZ = 100 en el ../include , 1 tick cada 10 ms
-       //#define portTICK_RATE_MS          ( ( TickType_t ) 1000 / configTICK_RATE_HZ )
+   //printf ( "tics de delay: %d\r\n",xDelay500ms );
+   printf ( "cuantos tics por ms: %d\r\n",portTICK_RATE_MS );
 
+   /* As per most tasks, this task is implemented in an infinite loop. */
+   for( ;; ) {
+      vPrintString( "Tarea 1\r\n" );
+      xLastWakeTime = xTaskGetTickCount();
+      printf ( "time %d\r\n",xLastWakeTime );
+
+      vTaskDelay( 500 / portTICK_RATE_MS );
+      //vTaskDelay( xDelay500ms );
    }
 }
 
+/*-----------------------------------------------------------*/
 
-/*==================[external functions definition]==========================*/
-
-int main(void)
+int main( void )
 {
-    //Se inicializa HW
-	/* Se crean las tareas */
-	xTaskCreate(vTarea, (const char *)"Tarea1", TAM_PILA, (void*)pcTextoTarea1, tskIDLE_PRIORITY+1, NULL );
-	xTaskCreate(vTarea, (const char *)"Tarea2", TAM_PILA, (void*)pcTextoTarea2, tskIDLE_PRIORITY+0, NULL );
+   /* Crea tarea con stack minimo y prioridad idle + 1 ... */
+   xTaskCreate( vTaskFunction, "Task 1", configMINIMAL_STACK_SIZE, NULL , tskIDLE_PRIORITY+1, NULL );
+
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     //Nunca llegara a ese lazo  .... espero
-     for( ;; );
-     return 0;
-}
 
-/*==================[end of file]============================================*/
+   for( ;; );
+   return 0;
+}
+/*-----------------------------------------------------------*/
+
+
