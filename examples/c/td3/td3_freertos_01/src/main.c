@@ -17,7 +17,7 @@
 /*==================[macros and definitions]=================================*/
 
 #define PRIO_TAREA1 1
-#define PRIO_TAREA2 1
+#define PRIO_TAREA2 2
 #define TAM_PILA 150
 #define mainDELAY_LOOP_COUNT        ( 0xffffff )
 
@@ -41,6 +41,7 @@ static void vTarea1(void *pvParameters)
    for( ;; ) {
       /* Print out the name of this task. */
       printf( pcTaskName );
+      Board_LED_Toggle(5); //titila "LED 3" ( verde )
       /* Delay for a period. */
       for( ul = 0; ul < mainDELAY_LOOP_COUNT; ul++ ) {
       }
@@ -55,6 +56,7 @@ static void vTarea2(void *pvParameters)
    for( ;; ) {
       /* Print out the name of this task. */
       printf( pcTaskName );
+      Board_LED_Toggle(3); //titila "LED 1" ( amarillo )
       /* Delay for a period. */
       for( ul = 0; ul < mainDELAY_LOOP_COUNT; ul++ ) {
       }

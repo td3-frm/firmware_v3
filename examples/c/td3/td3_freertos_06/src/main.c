@@ -1,149 +1,124 @@
 /* Copyright 2017
-4.8.1. Rutinas de atención a interrupción en FreeRTOS
-
-Ejemplo de manejo de colas desde una rutina de atención a
-interrupción usando FreeRTOS (Pagina 120 )
-
-En dicho ejemplo se usa una cola para comunicar
-la rutina de interrupción del puerto serie con la tarea de primer plano. La
-rutina de atención a la interrupción se limita a copiar el carácter recibido
-de la UART en la cola. La tarea de primer plano se encarga de verificar si
-hay caracteres nuevos en la cola en cada iteración del bucle de scan. Si hay
-un carácter nuevo, lo saca de la cola y lo copia en una cadena denominada
-mensaje . Cuando recibe un mensaje completo, indicado por la recepción del
-carácter de retorno de carro, se procesa dicho mensaje
+	codigo basado en el libro Sistemas Empotrados en tiempo real 
+4.5.1. Ejemplo (Pagina 96) (Ejemplo usando FreeRTOS) y modificación de
+4.5.3. Semáforos usados para sincronizar tareas (Pagina 101)
+Para ilustrar el funcionamiento de los semáforos, supóngase que en un
+sistema se necesita enviar la hora constantemente (en realidad sólo cuando
+cambie) por el puerto serie y el estado de 8 entradas digitales. Por tanto,
+el puerto serie se comparte ahora por dos tareas: ImprimeHora() para imprimir
+la hora y EnviaEntradas() para imprimir el estado de las entradas.
+Será por tanto necesario arbitrar el acceso al puerto serie por ambas tareas,
+por ejemplo mediante un semáforo (sem_serie)
+Se usa un semáforo adicional (sem_hora) para que ImprimeHora() se quede
+bloqueado mientras no cambia la hora. Lo incrementa la rutina RIT_IRQHandler()
+sem_serie 	->	exclusion mutua para seccion critica
+sem_hora	->	serializar para imprimir luego de cambiar hora
+nota: en minicom agregar Add Carriage Ret -> ctr+a z u
+      velocidad en 115200 -> ctr+a z o
  */
 
 /*==================[inclusions]=============================================*/
 
-#include "board.h"
-#include "chip.h"
 
+#include "board.h"
 #include "FreeRTOS.h"
-#include "FreeRTOSConfig.h"
 #include "task.h"
 #include "semphr.h"
 
-#include "main.h"
-
 /*==================[macros and definitions]=================================*/
 
-#define TAM_COLA 100
-#define TAM_PILA 1024
-#define PRIO_PROC_SER 2
+#define PRIO_IMP_HORA 1
+#define TAM_PILA 300
+
+typedef struct {
+uint8_t hor;
+uint8_t min;
+uint8_t seg;
+}HORA;
 
 /*==================[internal data declaration]==============================*/
 
 /*==================[internal functions declaration]=========================*/
 
+/** @brief hardware initialization function
+ *	@return none
+ */
+//static void initHardware(void);
 /*==================[internal data definition]===============================*/
 
 /*==================[external data definition]===============================*/
 
-static xQueueHandle cola_rec ; /* Cola para recibir */
+xSemaphoreHandle sem_hora;
+static HORA hora_act ={0,0,0};
 
 /*==================[internal functions definition]==========================*/
 
-static void InitHardware(void)
+static void InitTimer(void)
 {
-    SystemCoreClockUpdate();
-    Board_Init();
+	Chip_RIT_Init(LPC_RITIMER);
+	Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
 }
 
-static void InitSerie(void)
+static void ImprimeHora(void )
 {
-	/* Primero se crea la cola */
-	cola_rec = xQueueCreate (TAM_COLA , sizeof (char));
-	if( cola_rec == NULL ){
-		Board_LED_Set(3, TRUE); /* prende "LED 1" (amarillo) indica error Fatal */
-		while (1); /* Se queda bloqueado el sistema hasta que
-					venga el técnico de mantenimiento */
-	}
-    Chip_UART_Init(LPC_USART2);
-	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
-	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
-	Chip_UART_SetupFIFOS(LPC_USART2, UART_FCR_FIFO_EN | UART_FCR_TRG_LEV3); /* Modify FCR (FIFO Control Register)*/
-	Chip_UART_TXEnable(LPC_USART2); /* Enable UART Transmission */
-	Chip_SCU_PinMux(7, 1, MD_PDN, FUNC6);              /* P7_1,FUNC6: UART2_TXD */
-	Chip_SCU_PinMux(7, 2, MD_PLN|MD_EZI|MD_ZI, FUNC6); /* P7_2,FUNC6: UART2_RXD */
+	HORA copia_hora ;
+	char cadena [10];
 	
-	Chip_UART_IntEnable(LPC_USART2, UART_IER_RBRINT);
-	NVIC_EnableIRQ(USART2_IRQn);
-}
-
-static void SeriePuts(char *data)
-{
-	while(*data != 0)
-	{
-		while ((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_THRE) == 0) {}
-		Chip_UART_SendByte(LPC_USART2, *data);
-		data++;
+	while (1){
+		if( xSemaphoreTake (sem_hora , ( portTickType ) 2000 ) == pdTRUE ){
+			/* Se bloquea hasta que llegue la interrupción de tiempo */
+//			DisableInt();  
+			copia_hora = hora_act ;
+//			EnableInt ();
+			printf (" %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+		}
 	}
 }
-
-static void ProcesaMensaje(char *data)
+void RIT_IRQHandler(void)
+//void SysTick_Handler(void)
 {
-	SeriePuts(data); //hace eco
-}
-
-void ProcesaRecSerie (void * pvParameters)
-{
-	static char mensaje [100];
-	static uint8_t indice = 0;
-	char car_rec ;
+	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
-	while (1){		
-		if(xQueueReceive (cola_rec , &car_rec ,
-			(portTickType) 0x0 ) == pdTRUE){
-			/* Se asegura comparando con pdTRUE que ha recibido un carácter de la cola.
-				Se almacena */
-			Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
-		//	Board_LED_Toggle(1); //cambio estado "LED RGB" (verde)
-		//	Board_LED_Toggle(2); //cambio estado "LED RGB" (azul)
-			mensaje[indice] = car_rec;
-			if(mensaje[indice] == '\r'){
-				/* El \n indica el final del mensaje */
-				mensaje[indice+1] = '\n'; //agrego un new line al carriage return
-				mensaje[indice+2] = '\0';
-				ProcesaMensaje(mensaje);
-				indice = 0;
-				Board_LED_Toggle(4); //cambio estado "LED 2" (rojo)
-			}else{
-				indice ++;
+	portBASE_TYPE xTaskWoken = pdFALSE ;
+	
+	hora_act.seg ++;
+	if( hora_act.seg == 60){
+		hora_act.seg = 0;
+		hora_act.min ++;
+		if( hora_act.min == 60){
+			hora_act.min = 0;
+			hora_act.hor ++;
+			if( hora_act.hor == 24){
+				hora_act.hor = 0;
 			}
 		}
 	}
+	/* Lanza las tareas */
+	xTaskWoken = xSemaphoreGiveFromISR (sem_hora, xTaskWoken);
+	/* Borra el flag de interrupción */
+	Chip_RIT_ClearInt(LPC_RITIMER);
+//	if( xTaskWoken == pdTRUE ){
+//		taskYIELD (); /* Si el semáforo ha despertado
+//						una tarea , se fuerza un cambio
+//						de contexto */
+//	}
 }
 
-void UART2_IRQHandler(void)
-{
-	portBASE_TYPE xTaskWokenByPost = pdFALSE;
-	char car_recibido ;
 
-	if(Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR){
-		/* Llegó un carácter . Se lee del puerto serie */
-		car_recibido = Chip_UART_ReadByte(LPC_USART2);
-		/* Y se envía a la cola de recepción */
-		xTaskWokenByPost = xQueueSendFromISR(cola_rec,
-						   &car_recibido, xTaskWokenByPost);
-		if( xTaskWokenByPost == pdTRUE ){
-			taskYIELD (); /* Si el envío a la cola ha despertado
-							una tarea , se fuerza un cambio de
-							contexto */
-		}
-	}
-}
+
 
 /*==================[external functions definition]==========================*/
 
 int main(void)
 {
-	InitHardware(); /* Inicializa el Hardware del microcontrolador */
-	InitSerie();
-
+	//InitQueSeYo ();
+	/* Se inicializan los semáforos */
+	vSemaphoreCreateBinary (sem_hora);  //se inicializa por defecto en 1
+	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
 	/* Se crean las tareas */
-	xTaskCreate(ProcesaRecSerie, (const char *)"ProcSerie", TAM_PILA, NULL, PRIO_PROC_SER, NULL );
+	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
 
+	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
 }
 
