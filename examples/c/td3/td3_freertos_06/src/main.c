@@ -19,16 +19,18 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 
 /*==================[inclusions]=============================================*/
 
-
 #include "board.h"
+#include "chip.h"
+
 #include "FreeRTOS.h"
+#include "FreeRTOSConfig.h"
 #include "task.h"
 #include "semphr.h"
 
 /*==================[macros and definitions]=================================*/
 
 #define PRIO_IMP_HORA 1
-#define TAM_PILA 300
+#define TAM_PILA 1024
 
 typedef struct {
 uint8_t hor;
@@ -44,14 +46,43 @@ uint8_t seg;
  *	@return none
  */
 //static void initHardware(void);
+static void initHardware(void)
+{
+    SystemCoreClockUpdate();
+    Board_Init();
+ 
+}
+
 /*==================[internal data definition]===============================*/
 
 /*==================[external data definition]===============================*/
 
-xSemaphoreHandle sem_hora;
+SemaphoreHandle_t sem_hora;
 static HORA hora_act ={0,0,0};
 
 /*==================[internal functions definition]==========================*/
+
+
+static void InitSerie(void)
+{
+    Chip_UART_Init(LPC_USART2);
+	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
+	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
+	Chip_UART_SetupFIFOS(LPC_USART2, UART_FCR_FIFO_EN | UART_FCR_TRG_LEV3); /* Modify FCR (FIFO Control Register)*/
+	Chip_UART_TXEnable(LPC_USART2); /* Enable UART Transmission */
+	Chip_SCU_PinMux(7, 1, MD_PDN, FUNC6);              /* P7_1,FUNC6: UART2_TXD */
+	Chip_SCU_PinMux(7, 2, MD_PLN|MD_EZI|MD_ZI, FUNC6); /* P7_2,FUNC6: UART2_RXD */
+}
+
+static void SeriePuts(char *data)
+{
+	while(*data != 0)
+	{
+		while ((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_THRE) == 0) {}
+		Chip_UART_SendByte(LPC_USART2, *data);
+		data++;
+	}
+}
 
 static void InitTimer(void)
 {
@@ -59,28 +90,35 @@ static void InitTimer(void)
 	Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
 }
 
-static void ImprimeHora(void )
+static void ImprimeHora(void * a)
 {
 	HORA copia_hora ;
 	char cadena [10];
 	
 	while (1){
-		if( xSemaphoreTake (sem_hora , ( portTickType ) 2000 ) == pdTRUE ){
+		if(( xSemaphoreTake (sem_hora , ( portTickType ) 500 )) == pdTRUE ){
 			/* Se bloquea hasta que llegue la interrupción de tiempo */
 //			DisableInt();  
-			copia_hora = hora_act ;
 //			EnableInt ();
-			printf (" %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+			SeriePuts (cadena); 
 		}
+        else{
+            /*  Después de 500 ticks no se ha obtenido el
+                semáforo . Se podría dar un aviso o
+                simplemente no hacer nada como en este caso */
+                printf ("No me llega el Give :-( \r\n");
+            }
 	}
 }
+
+
 void RIT_IRQHandler(void)
-//void SysTick_Handler(void)
 {
 	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
-	portBASE_TYPE xTaskWoken = pdFALSE ;
-	
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+//	
 	hora_act.seg ++;
 	if( hora_act.seg == 60){
 		hora_act.seg = 0;
@@ -93,28 +131,33 @@ void RIT_IRQHandler(void)
 			}
 		}
 	}
-	/* Lanza las tareas */
-	xTaskWoken = xSemaphoreGiveFromISR (sem_hora, xTaskWoken);
+	///* Despierta las tareas */
+    printf ("despierto tarea\r\n");
+    xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
+    printf ("despierto tarea????\r\n");
+
+	if( xHigherPriorityTaskWoken == pdTRUE ){
+        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		 /* Si el semáforo ha despertado
+		  una tarea , se fuerza un cambio
+		  de contexto */
+	}
 	/* Borra el flag de interrupción */
 	Chip_RIT_ClearInt(LPC_RITIMER);
-//	if( xTaskWoken == pdTRUE ){
-//		taskYIELD (); /* Si el semáforo ha despertado
-//						una tarea , se fuerza un cambio
-//						de contexto */
-//	}
 }
-
-
-
 
 /*==================[external functions definition]==========================*/
 
 int main(void)
 {
-	//InitQueSeYo ();
+	initHardware(); /* Inicializa el Hardware del microcontrolador */
+	InitTimer();
+	InitSerie();
+	//InitQueSeYo();
 	/* Se inicializan los semáforos */
-	vSemaphoreCreateBinary (sem_hora);  //se inicializa por defecto en 1
-	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
+	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
+//	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
+    printf ("creo tarea y lanzo sched\r\n");
 	/* Se crean las tareas */
 	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
 
@@ -123,3 +166,4 @@ int main(void)
 }
 
 /*==================[end of file]============================================*/
+
