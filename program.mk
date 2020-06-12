@@ -14,5 +14,6 @@ PROGRAM_PATH = examples/c/td3/
 #PROGRAM_NAME = td3_freertos_04
 #PROGRAM_NAME = td3_freertos_05
 #PROGRAM_NAME = td3_freertos_06
-PROGRAM_NAME = td3_freertos_07
+#PROGRAM_NAME = td3_freertos_07
+PROGRAM_NAME = td3_freertos_08
 #PROGRAM_NAME = td3_template

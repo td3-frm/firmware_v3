@@ -46,6 +46,7 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 #define PRIO_PER_TASK 3
 #define PRIO_IMP_HORA 2
 #define PRIO_ENV_ENTR 1
+#define TAM_PILA 512
 
 typedef struct {
 uint8_t hor;
@@ -56,6 +57,7 @@ uint8_t seg;
 
 SemaphoreHandle_t sem_serie;
 SemaphoreHandle_t sem_hora;
+
 static HORA hora_act ={0,0,0};
 
 static void initHardware(void)
@@ -207,9 +209,9 @@ int main(void)
     xSemaphoreGive (sem_hora); //caso contrario ninguna tarea trabaja
 
 	/* Se crean las tareas */
-	xTaskCreate(ImprimeHora , (const char *)"ImpHora", 512, NULL, PRIO_IMP_HORA, NULL );
-    xTaskCreate(EnviaEntradas, (const char *)"EnvEntr", 512, NULL, PRIO_ENV_ENTR, NULL );
-    xTaskCreate(vPeriodicTask, (const char *)"Period", 512, NULL, PRIO_PER_TASK, NULL );
+	xTaskCreate(ImprimeHora , (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
+    xTaskCreate(EnviaEntradas, (const char *)"EnvEntr", TAM_PILA, NULL, PRIO_ENV_ENTR, NULL );
+    xTaskCreate(vPeriodicTask, (const char *)"Period", TAM_PILA, NULL, PRIO_PER_TASK, NULL );
 	vPortSetInterruptHandler( PRIO_SOFT_INT, InterruptHandler );
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     for( ;; );
