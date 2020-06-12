@@ -108,15 +108,10 @@ static void ImprimeHora(void * a)
 
 		if( resultado == pdTRUE ){
 			/* Se bloquea hasta que llegue la interrupción de tiempo */
-<<<<<<< HEAD
 //			DisableInt(); 
 			copia_hora = hora_act;
-=======
-//			DisableInt();  
-            copia_hora = hora_act ;
->>>>>>> eae0d34481453e664a300eac489af15652b611f0
 //			EnableInt ();
-			sprintf (cadena , " %02d: %02d: %02d\r\n\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
 			SeriePuts (cadena); 
 		}
         else{
@@ -149,10 +144,6 @@ static uint32_t InterruptHandler( void )
 	}
 	///* Despierta las tareas */
     xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
-<<<<<<< HEAD
-
-=======
->>>>>>> eae0d34481453e664a300eac489af15652b611f0
 
 	if( xHigherPriorityTaskWoken == pdTRUE ){
         portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
@@ -173,18 +164,9 @@ int main(void)
 	/* Se inicializan los semáforos */
 	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
 	/* Se crean las tareas */
-<<<<<<< HEAD
-	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
-
-	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
-	/* Set lowest priority for RIT */
-	NVIC_SetPriority(RITIMER_IRQn, (1<<__NVIC_PRIO_BITS) - 1);
-	
-=======
 	xTaskCreate(ImprimeHora , (const char *)"ImpHora", 512, NULL, PRIO_IMP_HORA, NULL );
     xTaskCreate(vPeriodicTask, (const char *)"Period", 512, NULL, PRIO_PER_TASK, NULL );
 	vPortSetInterruptHandler( mainINTERRUPT_NUMBER, InterruptHandler );
->>>>>>> eae0d34481453e664a300eac489af15652b611f0
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     for( ;; );
     return 0;
