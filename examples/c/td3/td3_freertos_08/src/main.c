@@ -1,42 +1,49 @@
 /* Copyright 2017
+	codigo basado en el libro Sistemas Empotrados en tiempo real 
+4.5.1. Ejemplo (Pagina 96) (Ejemplo usando FreeRTOS) y modificación de
+4.5.3. Semáforos usados para sincronizar tareas (Pagina 101)
+Para ilustrar el funcionamiento de los semáforos, supóngase que en un
+sistema se necesita enviar la hora constantemente (en realidad sólo cuando
+cambie) por el puerto serie y el estado de 8 entradas digitales. Por tanto,
+el puerto serie se comparte ahora por dos tareas: ImprimeHora() para imprimir
+la hora y EnviaEntradas() para imprimir el estado de las entradas.
+Será por tanto necesario arbitrar el acceso al puerto serie por ambas tareas,
+por ejemplo mediante un semáforo (sem_serie)
+Se usa un semáforo adicional (sem_hora) para que ImprimeHora() se quede
+bloqueado mientras no cambia la hora. Lo incrementa la rutina RIT_IRQHandler()
+sem_serie 	->	exclusion mutua para seccion critica
+sem_hora	->	serializar para imprimir luego de cambiar hora
+nota: en minicom agregar Add Carriage Ret -> ctr+a z u
+      velocidad en 115200 -> ctr+a z o
  */
-/*4.7.  Colas para comunicar tareas (Pagina 108)
- Cuando existen varios generadores de datos y un sólo consumidor y
-no se desea bloquear a los generadores a la espera de que el consu-
-midor obtenga los datos.
-4.7.2. (Pagina 111 ) Ejemplo de manejo de colas usando FreeRTOS
-Se reemplazo escritura en la EEPROM por puerto serie ;-)
 
-*/
 /*==================[inclusions]=============================================*/
 
 #include "board.h"
 #include "chip.h"
-#include "string.h"
 
 #include "FreeRTOS.h"
 #include "FreeRTOSConfig.h"
 #include "task.h"
-//#include "semphr.h"
-#include "queue.h"
-
-#include "main.h"
-
-//#include "timer.h"
-//#include "serie.h"
+#include "semphr.h"
 
 
 /*==================[macros and definitions]=================================*/
 
-# define PRIO_T_ERR 1	//menos prioritaria
-# define PRIO_T1 2
-# define PRIO_T2 3
-# define PRIO_T3 4
-# define PRIO_T4 5 		//mas prioritaria
-# define TAM_PILA 256
+#define PRIO_IMP_HORA 2 //mas prioritaria
+/* La tarea EnviaEntrada se ejecuta permanentemente. Luego que escribe el puerto serie,
+ y libera el semáforo, por lo que la area ImprimeHora pasará al estado “lista” y 
+ como tiene mayor prioridad que EnviaEntradas, se comenzará a ejecutar
+ que pasaría si la tarea EnviaEntrada tuviera mas prioridad que la ImprimeHora ?
+ */
+#define PRIO_ENV_ENTR 1
+#define TAM_PILA configMINIMAL_STACK_SIZE
 
-# define TAM_COLA 20 /* 20 mensajes */
-# define TAM_MSG 8 /* cada mensaje : "Tx:Eyy\n\0" ocupa 8 caracteres */
+typedef struct {
+uint8_t hor;
+uint8_t min;
+uint8_t seg;
+}HORA;
 
 /*==================[internal data declaration]==============================*/
 
@@ -51,27 +58,32 @@ static void initHardware(void);
 
 /*==================[external data definition]===============================*/
 
-xQueueHandle cola_err; // Global, se usa de distintas tareas
+xSemaphoreHandle sem_serie;
+xSemaphoreHandle sem_hora;
+static HORA hora_act ={0,0,0};
 
 /*==================[internal functions definition]==========================*/
 
 static void initHardware(void)
 {
     SystemCoreClockUpdate();
-
     Board_Init();
-    //Board_LED_Init();
-
+ 
 }
 
 uint8_t LeeEntradas(void)
 {
+  if (Board_TEC_GetStatus(BOARD_TEC_1) == 0) return 1;
+  if (Board_TEC_GetStatus(BOARD_TEC_2) == 0) return 2;
+//  if (Board_TEC_GetStatus(BOARD_TEC_3) == 0) return 4;
+//  if (Board_TEC_GetStatus(BOARD_TEC_4) == 0) return 2;
+  else return 0;
+
 	return Buttons_GetStatus();
 }
 
 static void InitSerie(void)
 {
-    //Board_UART_Init (LPC_USART2);
     Chip_UART_Init(LPC_USART2);
 	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
 	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
@@ -91,195 +103,118 @@ static void SeriePuts(char *data)
 	}
 }
 
-static void Tarea1 (void * pvParameters)
+static void InitTimer(void)
 {
-	char cad_err [8];
-	uint8_t entradas, entradas_ant;
-	int error_1, error_2 = 0;
-
-	while (1){
-		/* Proceso Tarea1 */
-		entradas = LeeEntradas();
-		if(entradas & ~entradas_ant & 0x01){
-			error_1 = 1;
-		}else{
-			error_1 = 0;
-		}
-		entradas_ant = entradas;
-		
-		if (error_1){
-			strcpy (cad_err, "T1:E00\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 100);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-
-		}
-		
-		/* Continuación proceso Tarea1 */
-		if (error_2){
-			strcpy (cad_err, "T1:E02\n");
-			xQueueSend (cola_err , (void *) cad_err ,(portTickType) 100);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Resto proceso Tarea1 */
-		vTaskDelay(50 / portTICK_RATE_MS);
-	}
+	Chip_RIT_Init(LPC_RITIMER);
+	Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
 }
 
-static void Tarea2 (void * pvParameters)
+static void ImprimeHora(void * a)
 {
-	char cad_err [8];
-	uint8_t entradas, entradas_ant;
-	int error_1, error_27 = 0;
+	HORA copia_hora ;
+	char cadena [10];
+	extern xSemaphoreHandle sem_serie ;
 	
 	while (1){
-		/* Proceso Tarea2 */
-		entradas = LeeEntradas();
-		if(entradas & ~entradas_ant & 0x02){
-			error_1 = 1;
-		}else{
-			error_1 = 0;
-		}
-		entradas_ant = entradas;
+		if( xSemaphoreTake (sem_hora , ( portTickType ) 2000 ) == pdTRUE ){
+			/* Se bloquea hasta que llegue la interrupción de tiempo */
+//			DisableInt();  
+			copia_hora = hora_act ;
+//			EnableInt ();
+			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora .seg );
+			if( xSemaphoreTake (sem_serie, ( portTickType ) 1000 ) == pdTRUE ){
+				SeriePuts (cadena); /* Se tiene el semáforo : se puede acceder al puerto serie */
+				xSemaphoreGive ( sem_serie ); /*Se suelta el semáforo */
+			}else{
+				/* Después de 1000 ticks no se ha obtenido el
+				semáforo . Se podría dar un aviso o
+				simplemente no hacer nada como en este caso 
+				o que tooglee un led rojo */
+				Board_LED_Toggle(4); //cambio estado "LED 2" (rojo)
 
-		if (error_1){
-			strcpy (cad_err, "T2:E01\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			/* El timeout es 0 para no bloquear la tarea
-			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			}
 		}
-		/* Continuación proceso Tarea2 */
-		if (error_27){
-			strcpy (cad_err , "T2:E27\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Resto proceso Tarea2 */
-		vTaskDelay(50 / portTICK_RATE_MS);
 	}
 }
 
-static void Tarea3 (void * pvParameters)
+static void EnviaEntradas(void * a)
 {
-	char cad_err [8];
-	uint8_t entradas, entradas_ant;
-	int error_10, error_11 = 0;
+	char cadena [100]; /* Guarda el mensaje a transmitir */
+	uint8_t entradas;
+	static uint8_t entradas_ant = 0;
+	extern xSemaphoreHandle sem_serie ;
+
+	while (1){
+		entradas = LeeEntradas ();
+		if( entradas_ant != entradas ){ /* Sólo imprime si cambian las entradas */
+			sprintf (cadena , "Entradas: %x\n", entradas );
+			if( xSemaphoreTake (sem_serie , ( portTickType ) 1000) == pdTRUE ){
+				/* Se tiene el semáforo : se puede acceder al puerto serie */
+				SeriePuts (cadena);
+				/* Se suelta el semáforo */
+				xSemaphoreGive (sem_serie);
+			}else{
+				/* Después de 1000 ticks no se ha obtenido el
+				semáforo . Se podría dar un aviso o
+				simplemente no hacer nada como en este caso 
+				o que tooglee un led amarillo */
+				Board_LED_Toggle(3); //cambio estado "LED 1" (amarillo)
+			}
+			entradas_ant = entradas;
+		}
+	}
+}
+
+void RIT_IRQHandler(void)
+{
+	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
-	while (1){
-		/* Proceso Tarea3 */
-		entradas = LeeEntradas();
-		if(entradas & ~entradas_ant & 0x04){
-			error_10 = 1;
-		}else{
-			error_10 = 0;
-		}
-		entradas_ant = entradas;
-
-		if (error_10){
-			strcpy (cad_err, "T3:E10\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			/* El timeout es 0 para no bloquear la tarea
-			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Continuación proceso Tarea3 */
-		if (error_11){
-			strcpy (cad_err , "T3:E11\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Resto proceso Tarea3 */
-		vTaskDelay(50 / portTICK_RATE_MS);
-	}
-}
-
-static void Tarea4 (void * pvParameters)
-{
-//	extern xQueueHandle cola_err ;
-	char cad_err [8];
-	uint8_t entradas, entradas_ant;
-	int error_20, error_21 = 0;
+	portBASE_TYPE xTaskWoken = pdFALSE ;
 	
-	while (1){
-		/* Proceso Tarea4 */
-		entradas = LeeEntradas();
-		if(entradas & ~entradas_ant & 0x08){
-			error_20 = 1;
-		}else{
-			error_20 = 0;
+	hora_act.seg ++;
+	if( hora_act.seg == 60){
+		hora_act.seg = 0;
+		hora_act.min ++;
+		if( hora_act.min == 60){
+			hora_act.min = 0;
+			hora_act.hor ++;
+			if( hora_act.hor == 24){
+				hora_act.hor = 0;
+			}
 		}
-		entradas_ant = entradas;
+	}
+	/* Lanza las tareas */
+	xTaskWoken = xSemaphoreGiveFromISR (sem_hora, xTaskWoken);
+	
+	/* Borra el flag de interrupción */
+	Chip_RIT_ClearInt(LPC_RITIMER);
 
-		if (error_20){
-			strcpy (cad_err, "T4:E20\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			/* El timeout es 0 para no bloquear la tarea
-			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Continuación proceso Tarea4 */
-		if (error_21){
-			strcpy (cad_err, "T4:E21\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
-		}
-		/* Resto proceso Tarea4 */
-		vTaskDelay(50 / portTICK_RATE_MS);
+//	if( xTaskWoken == pdTRUE ){
+//		taskYIELD (); /* Si el semáforo ha despertado
+//						una tarea , se fuerza un cambio
+//						de contexto */
 	}
 }
-
-static void TareaErr (void * pvParameters )
-{
-//	extern xQueueHandle cola_err ;
-	char cad_rec [8];
-	char cadena [20];
-
-	while (1){
-		if(xQueueReceive (cola_err , (void *) cad_rec,
-				(portTickType) 0xFFFFFFFF ) == pdTRUE ){
-			/* Se ha recibido un dato. Se escribe en EEPROM */
-			//EscEEPROM ((void *) cad_rec, 8);
-			/* Se ha recibido un dato. Se escribe en el puerto Serie */
-			sprintf (cadena , "Error: %s\n", cad_rec );
-			SeriePuts (cadena);
-		}
-		/* si después de un timeout no se ha recibido nada
-		la tarea se vuelve a bloquear a la espera de un
-		nuevo dato */
-	}
-}
-
 
 /*==================[external functions definition]==========================*/
 
 int main(void)
 {
 	initHardware(); /* Inicializa el Hardware del microcontrolador */
-	//InitTimer();
+	InitTimer();
 	InitSerie();
 	//InitQueSeYo ();
-	
-	/* Se crea la cola 
-    La función devuelve un “manejador”(file descriptor, mejor) que ha de pasarse a las funciones
-    que envían y reciben datos de la cola creada. */
-
-	cola_err = xQueueCreate (TAM_COLA, TAM_MSG);
-	
+	/* Se inicializan los semáforos */
+	vSemaphoreCreateBinary (sem_serie); //se inicializa por defecto en 1
+	vSemaphoreCreateBinary (sem_hora);  //se inicializa por defecto en 1
+	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
+//	xSemaphoreTake (sem_serie , ( portTickType ) 1); // abrazo mortal !
 	/* Se crean las tareas */
-	xTaskCreate (TareaErr, (const char *)"TareaE", TAM_PILA, NULL,
-				PRIO_T_ERR, NULL);
-	xTaskCreate (Tarea1, (const char *)"Tarea1", TAM_PILA, NULL,
-				PRIO_T1, NULL);
-	xTaskCreate (Tarea2, (const char *)"Tarea2", TAM_PILA , NULL,
-				PRIO_T2, NULL);
-	xTaskCreate (Tarea3, (const char *)"Tarea3", TAM_PILA , NULL,
-				PRIO_T3, NULL );
-	xTaskCreate (Tarea4, (const char *)"Tarea4", TAM_PILA , NULL,
-				PRIO_T4, NULL );
-	
+	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
+	xTaskCreate(EnviaEntradas, (const char *)"EnvEntr", TAM_PILA, NULL, PRIO_ENV_ENTR, NULL );
+
+	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
 }
-
-/** @} doxygen end group definition */
 
 /*==================[end of file]============================================*/

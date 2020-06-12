@@ -1,7 +1,6 @@
 /* Copyright 2017
 	codigo basado en el libro Sistemas Empotrados en tiempo real 
-4.5.1. Ejemplo (Pagina 96) (Ejemplo usando FreeRTOS) y modificación de
-4.5.3. Semáforos usados para sincronizar tareas (Pagina 101)
+4.5.1. Ejemplo (Pagina 96) (Ejemplo usando FreeRTOS) 
 Para ilustrar el funcionamiento de los semáforos, supóngase que en un
 sistema se necesita enviar la hora constantemente (en realidad sólo cuando
 cambie) por el puerto serie y el estado de 8 entradas digitales. Por tanto,
@@ -9,10 +8,8 @@ el puerto serie se comparte ahora por dos tareas: ImprimeHora() para imprimir
 la hora y EnviaEntradas() para imprimir el estado de las entradas.
 Será por tanto necesario arbitrar el acceso al puerto serie por ambas tareas,
 por ejemplo mediante un semáforo (sem_serie)
-Se usa un semáforo adicional (sem_hora) para que ImprimeHora() se quede
-bloqueado mientras no cambia la hora. Lo incrementa la rutina RIT_IRQHandler()
 sem_serie 	->	exclusion mutua para seccion critica
-sem_hora	->	serializar para imprimir luego de cambiar hora
+
 nota: en minicom agregar Add Carriage Ret -> ctr+a z u
       velocidad en 115200 -> ctr+a z o
  */
@@ -33,8 +30,7 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 /*==================[macros and definitions]=================================*/
 
 #define PRIO_IMP_HORA 2
-#define PRIO_PER_TASK 1
-#define mainINTERRUPT_NUMBER    3
+#define PRIO_ENV_ENTR 1
 
 typedef struct {
 uint8_t hor;
@@ -61,7 +57,7 @@ static void initHardware(void)
 
 /*==================[external data definition]===============================*/
 
-SemaphoreHandle_t sem_hora;
+SemaphoreHandle_t sem_serie;
 static HORA hora_act ={0,0,0};
 
 /*==================[internal functions definition]==========================*/
@@ -87,49 +83,17 @@ static void SeriePuts(char *data)
 		data++;
 	}
 }
-static void vPeriodicTask( void *pvParameters )
+
+static void InitTimer(void)
 {
-   const TickType_t xDelay1000ms = pdMS_TO_TICKS( 1000UL );
-   for( ;; ) { 
-      vTaskDelay( xDelay1000ms );
-      vPortGenerateSimulatedInterrupt( mainINTERRUPT_NUMBER );
-   }   
+    Chip_RIT_Init(LPC_RITIMER);
+    Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
 }
 
-
-static void ImprimeHora(void * a)
-{
-	HORA copia_hora ;
-	char cadena [10];
-    BaseType_t resultado;
-
-	while (1){
-        resultado = xSemaphoreTake( sem_hora, (portTickType) 500 );
-
-		if( resultado == pdTRUE ){
-			/* Se bloquea hasta que llegue la interrupción de tiempo */
-//			DisableInt(); 
-			copia_hora = hora_act;
-//			EnableInt ();
-			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
-			SeriePuts (cadena); 
-		}
-        else{
-            /*  Después de 500 ticks no se ha obtenido el
-                semáforo . Se podría dar un aviso o
-                simplemente no hacer nada como en este caso */
-            }
-	}
-}
-
-
-static uint32_t InterruptHandler( void )
-
+void RIT_IRQHandler(void)
 {
 	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-//	
 	hora_act.seg++;
 	if( hora_act.seg == 60){
 		hora_act.seg = 0;
@@ -142,31 +106,96 @@ static uint32_t InterruptHandler( void )
 			}
 		}
 	}
-	///* Despierta las tareas */
-    xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
+    Chip_RIT_ClearInt(LPC_RITIMER);
+}
 
-	if( xHigherPriorityTaskWoken == pdTRUE ){
-        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-		 /* Si el semáforo ha despertado
-		  una tarea , se fuerza un cambio
-		  de contexto */
+static uint8_t LeeEntradas(void)
+{
+    uint8_t tecla = 0;
+    if (Board_TEC_GetStatus(BOARD_TEC_1) == 0) tecla = tecla + 1;
+    if (Board_TEC_GetStatus(BOARD_TEC_2) == 0) tecla = tecla + 2;
+    if (Board_TEC_GetStatus(BOARD_TEC_3) == 0) tecla = tecla + 4;
+    if (Board_TEC_GetStatus(BOARD_TEC_4) == 0) tecla = tecla + 8;
+
+    return tecla;
+}
+
+
+static void ImprimeHora(void * a)
+{
+	HORA copia_hora ;
+	char cadena [10];
+    const TickType_t xDelay1000ms = pdMS_TO_TICKS( 1000UL ); //macro para convertir ms en ticks
+
+	while (1){
+			/* Se bloquea hasta que llegue la interrupción de tiempo */
+            vTaskDelay( xDelay1000ms );  // tarea pasa a estado Bloqueado hasta que expira timer
+            
+            //__disable_irq(); // deshabilita interrupciones
+			copia_hora = hora_act;
+            //__enable_irq(); // habilita interrupciones
+
+			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+
+            if (( xSemaphoreTake( sem_serie, (portTickType) 1000 )) == pdTRUE) {
+
+			    SeriePuts (cadena); /* Se tiene el semáforo : se puede
+                                        acceder al puerto serie */
+				xSemaphoreGive (sem_serie);
+		}
+        else{
+            /*  Después de 1000 ticks no se ha obtenido el
+                semáforo . Se podría dar un aviso o
+                simplemente no hacer nada como en este caso.... mejor avisamos con el red ROJO */
+	            Board_LED_Toggle(4); //titila "LED 2" ( rojo )
+            }
 	}
 }
+
+static void EnviaEntradas(void * a)
+{
+	char cadena [100]; /* Guarda el mensaje a transmitir */
+	uint8_t entradas;
+	static uint8_t entradas_ant = 0;
+
+	while (1){
+		entradas = LeeEntradas();
+		if( entradas_ant != entradas ){ /* Sólo imprime si cambian las entradas */
+			sprintf (cadena , "Entradas: %x\n", entradas );
+			if( xSemaphoreTake (sem_serie , ( portTickType ) 1000) == pdTRUE ){
+				/* Se tiene el semáforo : se puede acceder al puerto serie */
+				SeriePuts (cadena);
+				/* Se suelta el semáforo */
+				xSemaphoreGive (sem_serie);
+			}else{
+				/* Después de 1000 ticks no se ha obtenido el
+				semáforo . Se podría dar un aviso o
+				simplemente no hacer nada como en este caso ..mejor avisamos con el led amarillo */
+				Board_LED_Toggle(3); //cambio estado "LED 1" (amarillo)
+			}
+			entradas_ant = entradas;
+		}
+	}
+}
+
 
 /*==================[external functions definition]==========================*/
 
 int main(void)
 {
 	initHardware(); /* Inicializa el Hardware del microcontrolador */
-	//InitTimer();
+	InitTimer();
 	InitSerie();
 	//InitQueSeYo();
-	/* Se inicializan los semáforos */
-	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
+	/* Se inicializa el semáforo */
+	sem_serie = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
+	xSemaphoreGive (sem_serie); //caso contrario ninguna tarea trabaja
 	/* Se crean las tareas */
 	xTaskCreate(ImprimeHora , (const char *)"ImpHora", 512, NULL, PRIO_IMP_HORA, NULL );
-    xTaskCreate(vPeriodicTask, (const char *)"Period", 512, NULL, PRIO_PER_TASK, NULL );
-	vPortSetInterruptHandler( mainINTERRUPT_NUMBER, InterruptHandler );
+    xTaskCreate(EnviaEntradas, (const char *)"EnvEntr", 512, NULL, PRIO_ENV_ENTR, NULL );
+
+    NVIC_EnableIRQ(RITIMER_IRQn);
+
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     for( ;; );
     return 0;

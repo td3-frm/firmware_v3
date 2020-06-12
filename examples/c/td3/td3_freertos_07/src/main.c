@@ -10,7 +10,10 @@ la hora y EnviaEntradas() para imprimir el estado de las entradas.
 Será por tanto necesario arbitrar el acceso al puerto serie por ambas tareas,
 por ejemplo mediante un semáforo (sem_serie)
 Se usa un semáforo adicional (sem_hora) para que ImprimeHora() se quede
-bloqueado mientras no cambia la hora. Lo incrementa la rutina RIT_IRQHandler()
+bloqueado mientras no cambia la hora. Lo incrementa la rutina InterruptHandler()
+
+En esta versión se genera una Interrupción SIMULADA en vPeriodicTask()
+
 sem_serie 	->	exclusion mutua para seccion critica
 sem_hora	->	serializar para imprimir luego de cambiar hora
 nota: en minicom agregar Add Carriage Ret -> ctr+a z u
@@ -26,18 +29,15 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 #include "FreeRTOSConfig.h"
 #include "task.h"
 #include "semphr.h"
+/* Demo includes. */
+#include "supporting_functions.h"
 
 
 /*==================[macros and definitions]=================================*/
 
-#define PRIO_IMP_HORA 2 //mas prioritaria
-/* La tarea EnviaEntrada se ejecuta permanentemente. Luego que escribe el puerto serie,
- y libera el semáforo, por lo que la area ImprimeHora pasará al estado “lista” y 
- como tiene mayor prioridad que EnviaEntradas, se comenzará a ejecutar
- que pasaría si la tarea EnviaEntrada tuviera mas prioridad que la ImprimeHora ?
- */
-#define PRIO_ENV_ENTR 1
-#define TAM_PILA configMINIMAL_STACK_SIZE
+#define PRIO_IMP_HORA 2
+#define PRIO_PER_TASK 1
+#define mainINTERRUPT_NUMBER    3
 
 typedef struct {
 uint8_t hor;
@@ -52,18 +52,7 @@ uint8_t seg;
 /** @brief hardware initialization function
  *	@return none
  */
-static void initHardware(void);
-
-/*==================[internal data definition]===============================*/
-
-/*==================[external data definition]===============================*/
-
-xSemaphoreHandle sem_serie;
-xSemaphoreHandle sem_hora;
-static HORA hora_act ={0,0,0};
-
-/*==================[internal functions definition]==========================*/
-
+//static void initHardware(void);
 static void initHardware(void)
 {
     SystemCoreClockUpdate();
@@ -71,16 +60,15 @@ static void initHardware(void)
  
 }
 
-uint8_t LeeEntradas(void)
-{
-  if (Board_TEC_GetStatus(BOARD_TEC_1) == 0) return 1;
-  if (Board_TEC_GetStatus(BOARD_TEC_2) == 0) return 2;
-//  if (Board_TEC_GetStatus(BOARD_TEC_3) == 0) return 4;
-//  if (Board_TEC_GetStatus(BOARD_TEC_4) == 0) return 2;
-  else return 0;
+/*==================[internal data definition]===============================*/
 
-	return Buttons_GetStatus();
-}
+/*==================[external data definition]===============================*/
+
+SemaphoreHandle_t sem_hora;
+static HORA hora_act ={0,0,0};
+
+/*==================[internal functions definition]==========================*/
+
 
 static void InitSerie(void)
 {
@@ -102,97 +90,70 @@ static void SeriePuts(char *data)
 		data++;
 	}
 }
-
-static void InitTimer(void)
+static void vPeriodicTask( void *pvParameters )
 {
-	Chip_RIT_Init(LPC_RITIMER);
-	Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
+   const TickType_t xDelay1000ms = pdMS_TO_TICKS( 1000UL );
+   for( ;; ) { 
+      vTaskDelay( xDelay1000ms );
+      vPortGenerateSimulatedInterrupt( mainINTERRUPT_NUMBER );
+   }   
 }
 
 static void ImprimeHora(void * a)
 {
 	HORA copia_hora ;
 	char cadena [10];
-	extern xSemaphoreHandle sem_serie ;
-	
+
 	while (1){
-		if( xSemaphoreTake (sem_hora , ( portTickType ) 2000 ) == pdTRUE ){
 			/* Se bloquea hasta que llegue la interrupción de tiempo */
-//			DisableInt();  
-			copia_hora = hora_act ;
-//			EnableInt ();
-			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora .seg );
-			if( xSemaphoreTake (sem_serie, ( portTickType ) 1000 ) == pdTRUE ){
-				SeriePuts (cadena); /* Se tiene el semáforo : se puede acceder al puerto serie */
-				xSemaphoreGive ( sem_serie ); /*Se suelta el semáforo */
-			}else{
-				/* Después de 1000 ticks no se ha obtenido el
-				semáforo . Se podría dar un aviso o
-				simplemente no hacer nada como en este caso 
-				o que tooglee un led rojo */
-				Board_LED_Toggle(4); //cambio estado "LED 2" (rojo)
+            __disable_irq(); // deshabilita interrupciones
+			copia_hora = hora_act;
+            __enable_irq(); // habilita interrupciones
 
-			}
+			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+
+            if (( xSemaphoreTake( sem_hora, (portTickType) 1000 )) == pdTRUE) {
+
+			    SeriePuts (cadena); /* Se tiene el semáforo : se puede
+                                        acceder al puerto serie */
 		}
+        else{
+            /*  Después de 1000 ticks no se ha obtenido el
+                semáforo . Se podría dar un aviso o
+                simplemente no hacer nada como en este caso.... mejor avisamos con el red ROJO */
+	            Board_LED_Toggle(4); //titila "LED 2" ( rojo )
+            }
 	}
 }
 
-static void EnviaEntradas(void * a)
-{
-	char cadena [100]; /* Guarda el mensaje a transmitir */
-	uint8_t entradas;
-	static uint8_t entradas_ant = 0;
-	extern xSemaphoreHandle sem_serie ;
 
-	while (1){
-		entradas = LeeEntradas ();
-		if( entradas_ant != entradas ){ /* Sólo imprime si cambian las entradas */
-			sprintf (cadena , "Entradas: %x\n", entradas );
-			if( xSemaphoreTake (sem_serie , ( portTickType ) 1000) == pdTRUE ){
-				/* Se tiene el semáforo : se puede acceder al puerto serie */
-				SeriePuts (cadena);
-				/* Se suelta el semáforo */
-				xSemaphoreGive (sem_serie);
-			}else{
-				/* Después de 1000 ticks no se ha obtenido el
-				semáforo . Se podría dar un aviso o
-				simplemente no hacer nada como en este caso 
-				o que tooglee un led amarillo */
-				Board_LED_Toggle(3); //cambio estado "LED 1" (amarillo)
-			}
-			entradas_ant = entradas;
-		}
-	}
-}
+static uint32_t InterruptHandler( void )
 
-void RIT_IRQHandler(void)
 {
 	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
-	portBASE_TYPE xTaskWoken = pdFALSE ;
-	
-	hora_act.seg ++;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+//	
+	hora_act.seg++;
 	if( hora_act.seg == 60){
 		hora_act.seg = 0;
-		hora_act.min ++;
+		hora_act.min++;
 		if( hora_act.min == 60){
 			hora_act.min = 0;
-			hora_act.hor ++;
+			hora_act.hor++;
 			if( hora_act.hor == 24){
 				hora_act.hor = 0;
 			}
 		}
 	}
-	/* Lanza las tareas */
-	xTaskWoken = xSemaphoreGiveFromISR (sem_hora, xTaskWoken);
-	
-	/* Borra el flag de interrupción */
-	Chip_RIT_ClearInt(LPC_RITIMER);
+	///* Despierta las tareas */
+    xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
 
-//	if( xTaskWoken == pdTRUE ){
-//		taskYIELD (); /* Si el semáforo ha despertado
-//						una tarea , se fuerza un cambio
-//						de contexto */
+	if( xHigherPriorityTaskWoken == pdTRUE ){
+        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+		 /* Si el semáforo ha despertado
+		  una tarea , se fuerza un cambio
+		  de contexto */
 	}
 }
 
@@ -201,20 +162,19 @@ void RIT_IRQHandler(void)
 int main(void)
 {
 	initHardware(); /* Inicializa el Hardware del microcontrolador */
-	InitTimer();
+	//InitTimer();
 	InitSerie();
-	//InitQueSeYo ();
+	//InitQueSeYo();
 	/* Se inicializan los semáforos */
-	vSemaphoreCreateBinary (sem_serie); //se inicializa por defecto en 1
-	vSemaphoreCreateBinary (sem_hora);  //se inicializa por defecto en 1
-	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
-//	xSemaphoreTake (sem_serie , ( portTickType ) 1); // abrazo mortal !
+	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
 	/* Se crean las tareas */
-	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
-	xTaskCreate(EnviaEntradas, (const char *)"EnvEntr", TAM_PILA, NULL, PRIO_ENV_ENTR, NULL );
-
-	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
+	xTaskCreate(ImprimeHora , (const char *)"ImpHora", 512, NULL, PRIO_IMP_HORA, NULL );
+    xTaskCreate(vPeriodicTask, (const char *)"Period", 512, NULL, PRIO_PER_TASK, NULL );
+	vPortSetInterruptHandler( mainINTERRUPT_NUMBER, InterruptHandler );
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
+    for( ;; );
+    return 0;
 }
 
 /*==================[end of file]============================================*/
+
