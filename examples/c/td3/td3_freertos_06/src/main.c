@@ -120,7 +120,6 @@ static uint8_t LeeEntradas(void)
     return tecla;
 }
 
-
 static void ImprimeHora(void * a)
 {
 	HORA copia_hora ;
