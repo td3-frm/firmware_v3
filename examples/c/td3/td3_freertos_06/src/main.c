@@ -26,11 +26,15 @@ nota: en minicom agregar Add Carriage Ret -> ctr+a z u
 #include "FreeRTOSConfig.h"
 #include "task.h"
 #include "semphr.h"
+/* Demo includes. */
+#include "supporting_functions.h"
+
 
 /*==================[macros and definitions]=================================*/
 
-#define PRIO_IMP_HORA 1
-#define TAM_PILA 1024
+#define PRIO_IMP_HORA 2
+#define PRIO_PER_TASK 1
+#define mainINTERRUPT_NUMBER    3
 
 typedef struct {
 uint8_t hor;
@@ -83,22 +87,29 @@ static void SeriePuts(char *data)
 		data++;
 	}
 }
-
-static void InitTimer(void)
+static void vPeriodicTask( void *pvParameters )
 {
-	Chip_RIT_Init(LPC_RITIMER);
-	Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
+   const TickType_t xDelay1000ms = pdMS_TO_TICKS( 1000UL );
+   for( ;; ) { 
+      vTaskDelay( xDelay1000ms );
+      vPortGenerateSimulatedInterrupt( mainINTERRUPT_NUMBER );
+   }   
 }
+
 
 static void ImprimeHora(void * a)
 {
 	HORA copia_hora ;
 	char cadena [10];
-	
+    BaseType_t resultado;
+
 	while (1){
-		if(( xSemaphoreTake (sem_hora , ( portTickType ) 500 )) == pdTRUE ){
+        resultado = xSemaphoreTake( sem_hora, (portTickType) 500 );
+
+		if( resultado == pdTRUE ){
 			/* Se bloquea hasta que llegue la interrupción de tiempo */
 //			DisableInt();  
+            copia_hora = hora_act ;
 //			EnableInt ();
 			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
 			SeriePuts (cadena); 
@@ -107,34 +118,32 @@ static void ImprimeHora(void * a)
             /*  Después de 500 ticks no se ha obtenido el
                 semáforo . Se podría dar un aviso o
                 simplemente no hacer nada como en este caso */
-                printf ("No me llega el Give :-( \r\n");
             }
 	}
 }
 
 
-void RIT_IRQHandler(void)
+static uint32_t InterruptHandler( void )
+
 {
 	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 //	
-	hora_act.seg ++;
+	hora_act.seg++;
 	if( hora_act.seg == 60){
 		hora_act.seg = 0;
-		hora_act.min ++;
+		hora_act.min++;
 		if( hora_act.min == 60){
 			hora_act.min = 0;
-			hora_act.hor ++;
+			hora_act.hor++;
 			if( hora_act.hor == 24){
 				hora_act.hor = 0;
 			}
 		}
 	}
 	///* Despierta las tareas */
-    printf ("despierto tarea\r\n");
     xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
-    printf ("despierto tarea????\r\n");
 
 	if( xHigherPriorityTaskWoken == pdTRUE ){
         portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
@@ -142,8 +151,6 @@ void RIT_IRQHandler(void)
 		  una tarea , se fuerza un cambio
 		  de contexto */
 	}
-	/* Borra el flag de interrupción */
-	Chip_RIT_ClearInt(LPC_RITIMER);
 }
 
 /*==================[external functions definition]==========================*/
@@ -151,18 +158,18 @@ void RIT_IRQHandler(void)
 int main(void)
 {
 	initHardware(); /* Inicializa el Hardware del microcontrolador */
-	InitTimer();
+	//InitTimer();
 	InitSerie();
 	//InitQueSeYo();
 	/* Se inicializan los semáforos */
 	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
-//	xSemaphoreTake (sem_hora , ( portTickType ) 1); //es para que ImprimeHora se bloquee hasta que llegue la 1ra IRQ 
-    printf ("creo tarea y lanzo sched\r\n");
 	/* Se crean las tareas */
-	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
-
-	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
+	xTaskCreate(ImprimeHora , (const char *)"ImpHora", 512, NULL, PRIO_IMP_HORA, NULL );
+    xTaskCreate(vPeriodicTask, (const char *)"Period", 512, NULL, PRIO_PER_TASK, NULL );
+	vPortSetInterruptHandler( mainINTERRUPT_NUMBER, InterruptHandler );
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
+    for( ;; );
+    return 0;
 }
 
 /*==================[end of file]============================================*/
