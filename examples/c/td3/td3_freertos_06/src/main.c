@@ -98,9 +98,10 @@ static void ImprimeHora(void * a)
 	while (1){
 		if(( xSemaphoreTake (sem_hora , ( portTickType ) 500 )) == pdTRUE ){
 			/* Se bloquea hasta que llegue la interrupción de tiempo */
-//			DisableInt();  
+//			DisableInt(); 
+			copia_hora = hora_act;
 //			EnableInt ();
-			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
+			sprintf (cadena , " %02d: %02d: %02d\r\n\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
 			SeriePuts (cadena); 
 		}
         else{
@@ -134,7 +135,7 @@ void RIT_IRQHandler(void)
 	///* Despierta las tareas */
     printf ("despierto tarea\r\n");
     xSemaphoreGiveFromISR( sem_hora, &xHigherPriorityTaskWoken );
-    printf ("despierto tarea????\r\n");
+
 
 	if( xHigherPriorityTaskWoken == pdTRUE ){
         portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
@@ -162,6 +163,9 @@ int main(void)
 	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );
 
 	NVIC_EnableIRQ(RITIMER_IRQn); //comentar que hace esta linea .....
+	/* Set lowest priority for RIT */
+	NVIC_SetPriority(RITIMER_IRQn, (1<<__NVIC_PRIO_BITS) - 1);
+	
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
 }
 
