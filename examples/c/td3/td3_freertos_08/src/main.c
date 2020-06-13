@@ -197,7 +197,6 @@ int main(void)
 	sem_serie = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
 	sem_hora = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
     xSemaphoreGive (sem_serie); //caso contrario ninguna tarea trabaja
-    xSemaphoreGive (sem_hora); //caso contrario ninguna tarea trabaja
 
 	/* Se crean las tareas */
 	xTaskCreate(ImprimeHora, (const char *)"ImpHora", TAM_PILA, NULL, PRIO_IMP_HORA, NULL );

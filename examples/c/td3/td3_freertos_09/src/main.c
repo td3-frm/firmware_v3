@@ -1,11 +1,28 @@
-/* Copyright 2017
+/* Copyright 2020
  */
 /*4.7.  Colas para comunicar tareas (Pagina 108)
  Cuando existen varios generadores de datos y un sólo consumidor y
 no se desea bloquear a los generadores a la espera de que el consu-
 midor obtenga los datos.
 4.7.2. (Pagina 111 ) Ejemplo de manejo de colas usando FreeRTOS
-Se reemplazo escritura en la EEPROM por puerto serie ;-)
+En un sistema en tiempo real es necesario guardar un registro de los
+errores producidos para que en caso de que se produzca algún problema
+con el sistema, los ingenieros puedan al menos tener una idea de qué erro-
+res se han producido en el fallo. Las características del sistema serán:
+Por cada error se guardará una cadena de caracteres con el siguiente
+formato: "Tx:Eyy\n" . La x representa el número de la tarea en la que
+se ha producido el error y la y un código que indica el error producido.
+Existen 4 tareas en el sistema y cada una podrá enviar registros de
+error a la cola
+Existe una única tarea que se encarga de leer registros de error de la
+cola y escribirlos en una memoria EEPROM. Para escribir datos en la
+EEPROM existe la siguiente función:
+uint16 EscEEPROM (void *pbuff , uint16 tambuf );
+Que escribe en la memoria EEPROM tambuf bytes a partir de la direc-
+ción pbuff . La función devuelve el número de bytes que ha escrito en
+la memoria EEPROM.
+
+NOTA: Se reemplazo escritura en la EEPROM por puerto serie ;-)
 
 */
 /*==================[inclusions]=============================================*/
@@ -19,11 +36,6 @@ Se reemplazo escritura en la EEPROM por puerto serie ;-)
 #include "task.h"
 //#include "semphr.h"
 #include "queue.h"
-
-#include "main.h"
-
-//#include "timer.h"
-//#include "serie.h"
 
 
 /*==================[macros and definitions]=================================*/
@@ -51,22 +63,26 @@ static void initHardware(void);
 
 /*==================[external data definition]===============================*/
 
-xQueueHandle cola_err; // Global, se usa de distintas tareas
+QueueHandle_t cola_err; // Global, se usa de distintas tareas
 
 /*==================[internal functions definition]==========================*/
 
 static void initHardware(void)
 {
     SystemCoreClockUpdate();
-
     Board_Init();
-    //Board_LED_Init();
 
 }
 
-uint8_t LeeEntradas(void)
+static uint8_t LeeEntradas(void)
 {
-	return Buttons_GetStatus();
+    uint8_t tecla = 0;
+    if (Board_TEC_GetStatus(BOARD_TEC_1) == 0) tecla = tecla + 1;
+    if (Board_TEC_GetStatus(BOARD_TEC_2) == 0) tecla = tecla + 2;
+    if (Board_TEC_GetStatus(BOARD_TEC_3) == 0) tecla = tecla + 4;
+    if (Board_TEC_GetStatus(BOARD_TEC_4) == 0) tecla = tecla + 8;
+
+    return tecla;
 }
 
 static void InitSerie(void)
@@ -96,6 +112,7 @@ static void Tarea1 (void * pvParameters)
 	char cad_err [8];
 	uint8_t entradas, entradas_ant;
 	int error_1, error_2 = 0;
+    BaseType_t xStatus;
 
 	while (1){
 		/* Proceso Tarea1 */
@@ -108,17 +125,17 @@ static void Tarea1 (void * pvParameters)
 		entradas_ant = entradas;
 		
 		if (error_1){
-			strcpy (cad_err, "T1:E00\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 100);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			strcpy (cad_err, "T1:E01\n");
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 100);
+            if ( xStatus == pdPASS ) Board_LED_Toggle(5); //titila "LED 3" ( verde )
 
 		}
 		
 		/* Continuación proceso Tarea1 */
 		if (error_2){
 			strcpy (cad_err, "T1:E02\n");
-			xQueueSend (cola_err , (void *) cad_err ,(portTickType) 100);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			xStatus = xQueueSend (cola_err , (void *) cad_err ,(portTickType) 100);
+			if ( xStatus == pdPASS ) Board_LED_Toggle(5); //titila "LED 3" ( verde )
 		}
 		/* Resto proceso Tarea1 */
 		vTaskDelay(50 / portTICK_RATE_MS);
@@ -130,6 +147,7 @@ static void Tarea2 (void * pvParameters)
 	char cad_err [8];
 	uint8_t entradas, entradas_ant;
 	int error_1, error_27 = 0;
+    BaseType_t xStatus;
 	
 	while (1){
 		/* Proceso Tarea2 */
@@ -143,16 +161,16 @@ static void Tarea2 (void * pvParameters)
 
 		if (error_1){
 			strcpy (cad_err, "T2:E01\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
 			/* El timeout es 0 para no bloquear la tarea
 			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			if ( xStatus == pdPASS ) Board_LED_Toggle(4); //titila "LED 2" ( rojo )
 		}
 		/* Continuación proceso Tarea2 */
 		if (error_27){
 			strcpy (cad_err , "T2:E27\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			if ( xStatus == pdPASS ) Board_LED_Toggle(4); //titila "LED 2" ( rojo )
 		}
 		/* Resto proceso Tarea2 */
 		vTaskDelay(50 / portTICK_RATE_MS);
@@ -164,6 +182,7 @@ static void Tarea3 (void * pvParameters)
 	char cad_err [8];
 	uint8_t entradas, entradas_ant;
 	int error_10, error_11 = 0;
+    BaseType_t xStatus;
 	
 	while (1){
 		/* Proceso Tarea3 */
@@ -177,16 +196,16 @@ static void Tarea3 (void * pvParameters)
 
 		if (error_10){
 			strcpy (cad_err, "T3:E10\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
 			/* El timeout es 0 para no bloquear la tarea
 			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			if ( xStatus == pdPASS ) Board_LED_Toggle(3); //titila "LED 1" ( amarillo )
 		}
 		/* Continuación proceso Tarea3 */
 		if (error_11){
 			strcpy (cad_err , "T3:E11\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			if ( xStatus == pdPASS ) Board_LED_Toggle(3); //titila "LED 1" ( amarillo )
 		}
 		/* Resto proceso Tarea3 */
 		vTaskDelay(50 / portTICK_RATE_MS);
@@ -199,6 +218,7 @@ static void Tarea4 (void * pvParameters)
 	char cad_err [8];
 	uint8_t entradas, entradas_ant;
 	int error_20, error_21 = 0;
+    BaseType_t xStatus;
 	
 	while (1){
 		/* Proceso Tarea4 */
@@ -211,17 +231,17 @@ static void Tarea4 (void * pvParameters)
 		entradas_ant = entradas;
 
 		if (error_20){
-			strcpy (cad_err, "T4:E20\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			strcpy (cad_err, "T4:E24\n");
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
 			/* El timeout es 0 para no bloquear la tarea
 			si la cola está llena */
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			if ( xStatus == pdPASS ) Board_LED_Toggle(2); //cambio estado "LED RGB" (azul)
 		}
 		/* Continuación proceso Tarea4 */
 		if (error_21){
-			strcpy (cad_err, "T4:E21\n");
-			xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
-			Board_LED_Toggle(5); //titila "LED 3" ( verde )
+			strcpy (cad_err, "T4:E48\n");
+			xStatus = xQueueSend (cola_err, (void *) cad_err, (portTickType) 0);
+			if ( xStatus == pdPASS ) Board_LED_Toggle(2); //cambio estado "LED RGB" (azul)
 		}
 		/* Resto proceso Tarea4 */
 		vTaskDelay(50 / portTICK_RATE_MS);
@@ -235,8 +255,8 @@ static void TareaErr (void * pvParameters )
 	char cadena [20];
 
 	while (1){
-		if(xQueueReceive (cola_err , (void *) cad_rec,
-				(portTickType) 0xFFFFFFFF ) == pdTRUE ){
+		if((xQueueReceive (cola_err , (void *) cad_rec,
+				(portTickType) 0xFFFFFFFF )) == pdTRUE ){
 			/* Se ha recibido un dato. Se escribe en EEPROM */
 			//EscEEPROM ((void *) cad_rec, 8);
 			/* Se ha recibido un dato. Se escribe en el puerto Serie */
@@ -246,6 +266,7 @@ static void TareaErr (void * pvParameters )
 		/* si después de un timeout no se ha recibido nada
 		la tarea se vuelve a bloquear a la espera de un
 		nuevo dato */
+        else Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
 	}
 }
 
