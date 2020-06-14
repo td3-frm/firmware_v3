@@ -1,5 +1,19 @@
-/* Copyright 2017
+/* Copyright 2020
 4.8.1. Rutinas de atención a interrupción en FreeRTOS
+En FreeRTOS existen dos tipos de llamadas al
+sistema operativo: las normales y las diseñadas para ser llamadas desde
+una rutina de atención a interrupción.
+
+Las funciones diseñadas para ser llamadas desde las rutinas de aten-
+ción a interrupción tienen dos diferencias con respecto a las normales:
+- No pueden bloquearse, al estar pensadas para ser llamadas desde una
+interrupción.
+- No producen cambios de contexto, aunque la escritura o recepción de
+datos de la cola despierten a una tarea más prioritaria que la tarea
+que estaba ejecutándose antes de que se produjese la interrupción.
+En este caso, el cambio de contexto es necesario hacerlo “a mano” al
+finalizar la ejecución de la rutina de interrupción, de forma que desde
+la interrupción se vuelva a la rutina recién despertada.
 
 Ejemplo de manejo de colas desde una rutina de atención a
 interrupción usando FreeRTOS (Pagina 120 )
@@ -24,7 +38,6 @@ carácter de retorno de carro, se procesa dicho mensaje
 #include "task.h"
 #include "semphr.h"
 
-#include "main.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -40,7 +53,7 @@ carácter de retorno de carro, se procesa dicho mensaje
 
 /*==================[external data definition]===============================*/
 
-static xQueueHandle cola_rec ; /* Cola para recibir */
+QueueHandle_t cola_rec ; /* Cola para recibir */
 
 /*==================[internal functions definition]==========================*/
 
@@ -93,13 +106,12 @@ void ProcesaRecSerie (void * pvParameters)
 	char car_rec ;
 	
 	while (1){		
-		if(xQueueReceive (cola_rec , &car_rec ,
-			(portTickType) 0x0 ) == pdTRUE){
+
+		if((xQueueReceive (cola_rec , &car_rec ,
+			(portTickType) 0xFFFFFFFF )) == pdTRUE){  //portMAX_DELAY espera sin timeout
 			/* Se asegura comparando con pdTRUE que ha recibido un carácter de la cola.
 				Se almacena */
 			Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
-		//	Board_LED_Toggle(1); //cambio estado "LED RGB" (verde)
-		//	Board_LED_Toggle(2); //cambio estado "LED RGB" (azul)
 			mensaje[indice] = car_rec;
 			if(mensaje[indice] == '\r'){
 				/* El \n indica el final del mensaje */
@@ -117,19 +129,18 @@ void ProcesaRecSerie (void * pvParameters)
 
 void UART2_IRQHandler(void)
 {
-	portBASE_TYPE xTaskWokenByPost = pdFALSE;
-	char car_recibido ;
+	BaseType_t xTaskWokenByPost = pdFALSE;
 
-	if(Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR){
+	if((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR) == 0){
 		/* Llegó un carácter . Se lee del puerto serie */
 		car_recibido = Chip_UART_ReadByte(LPC_USART2);
 		/* Y se envía a la cola de recepción */
-		xTaskWokenByPost = xQueueSendFromISR(cola_rec,
-						   &car_recibido, xTaskWokenByPost);
+		xQueueSendFromISR(cola_rec, &car_recibido, &xTaskWokenByPost);
+        //validar si retorno con errQUEUE_FULL o pdPASS
 		if( xTaskWokenByPost == pdTRUE ){
-			taskYIELD (); /* Si el envío a la cola ha despertado
-							una tarea , se fuerza un cambio de
-							contexto */
+			portYIELD_FROM_ISR( xTaskWokenByPost );
+            /* Si el envío a la cola ha despertado una tarea ,
+            se fuerza un cambio de contexto */
 		}
 	}
 }
