@@ -1,8 +1,9 @@
-/* este codigo NO esta en el libro de Sistemas Empotrados en tiempo real
- * pero el objetivo es intriducir a FreeRTOS usando solo una  tarea que 
- * imprime por el puerto serie, e invocando al planificador
- *
- *
+/* 
+4.5.5. Inversión de prioridad (pagina 104)
+El uso de semáforos puede producir una inversión de prioridad, 
+que consiste en que una tarea de menor prioridad impide
+la ejecución de una tarea de mayor prioridad.
+
  *  */
  /*==================[inclusions]=============================================*/
 
