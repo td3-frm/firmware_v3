@@ -77,15 +77,12 @@ static void InitSerie(void)
 	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
 	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
 	Chip_UART_SetupFIFOS(LPC_USART2, UART_FCR_FIFO_EN | UART_FCR_TRG_LEV3); /* Modify FCR (FIFO Control Register)*/
-//  Chip_UART_SetupFIFOS(LPC_UART, (UART_FCR_FIFO_EN | UART_FCR_TRG_LEV2));
 	Chip_UART_TXEnable(LPC_USART2); /* Enable UART Transmission */
 	Chip_SCU_PinMux(7, 1, MD_PDN, FUNC6);              /* P7_1,FUNC6: UART2_TXD */
 	Chip_SCU_PinMux(7, 2, MD_PLN|MD_EZI|MD_ZI, FUNC6); /* P7_2,FUNC6: UART2_RXD */
 	
 	Chip_UART_IntEnable(LPC_USART2, UART_IER_RBRINT);
-//  Chip_UART_IntEnable(LPC_UART, (UART_IER_RBRINT | UART_IER_RLSINT));
-    NVIC_SetPriority(USART2_IRQn, 1);
-//  NVIC_SetPriority(UARTx_IRQn, 1);
+    NVIC_SetPriority(USART2_IRQn, (1<<__NVIC_PRIO_BITS) - 1);
 	NVIC_EnableIRQ(USART2_IRQn);
 }
 
@@ -118,7 +115,7 @@ void ProcesaRecSerie (void * pvParameters)
 				Se almacena */
 			Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
 			mensaje[indice] = car_rec;
-            printf("%c\n",car_rec);
+            printf("%c\r\n",car_rec);
 			if(mensaje[indice] == '\r'){
 				/* El \n indica el final del mensaje */
 				mensaje[indice+1] = '\n'; //agrego un new line al carriage return
@@ -139,9 +136,10 @@ void UART2_IRQHandler(void)
 	char car_recibido ;
 
 	Board_LED_Toggle(5); //cambio estado "LED 3" (verde)
-	if((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR) == 0){
+	if((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR) == 1){
 		/* Llegó un carácter . Se lee del puerto serie */
 		car_recibido = Chip_UART_ReadByte(LPC_USART2);
+		Board_LED_Toggle(3); //cambio estado LED amarillo
 		/* Y se envía a la cola de recepción */
 		xQueueSendFromISR(cola_rec, &car_recibido, &xTaskWokenByPost);
         //validar si retorno con errQUEUE_FULL o pdPASS
