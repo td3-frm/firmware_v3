@@ -214,7 +214,6 @@ static void Tarea3 (void * pvParameters)
 
 static void Tarea4 (void * pvParameters)
 {
-//	extern xQueueHandle cola_err ;
 	char cad_err [8];
 	uint8_t entradas, entradas_ant;
 	int error_20, error_21 = 0;

@@ -90,7 +90,7 @@ static void InitTimer(void)
     Chip_RIT_SetTimerInterval(LPC_RITIMER,1000);
 }
 
-void RIT_IRQHandler(void)
+void RIT_IRQHandler(void) //ISR tarea background
 {
 	Board_LED_Toggle(5); //titila "LED 3" ( verde )
 	
@@ -137,9 +137,9 @@ static void ImprimeHora(void * a)
 			sprintf (cadena , " %02d: %02d: %02d\n", copia_hora.hor, copia_hora.min, copia_hora.seg );
 
             if (( xSemaphoreTake( sem_serie, (portTickType) 1000 )) == pdTRUE) {
-
 			    SeriePuts (cadena); /* Se tiene el semáforo : se puede
                                         acceder al puerto serie */
+                //printf(cadena);
 				xSemaphoreGive (sem_serie);
 		}
         else{
@@ -164,6 +164,7 @@ static void EnviaEntradas(void * a)
 			if( xSemaphoreTake (sem_serie , ( portTickType ) 1000) == pdTRUE ){
 				/* Se tiene el semáforo : se puede acceder al puerto serie */
 				SeriePuts (cadena);
+                //printf(cadena);
 				/* Se suelta el semáforo */
 				xSemaphoreGive (sem_serie);
 			}else{

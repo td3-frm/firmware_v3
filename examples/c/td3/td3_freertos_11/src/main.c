@@ -1,17 +1,31 @@
-/* Copyright 2017
-4.9.  Gestión de tiempo
-4.9.2.  Ejemplo: arranque de una bomba (Pagina 124)
-La función ArrancaBomba arranca una
-bomba mediante un arrancador estrella/triángulo y después de un tiempo
-monitoriza la presión de salida de la bomba para verificar que ésta está
-funcionando correctamente. El tiempo de retardo desde que se conecta el
-motor en triángulo hasta que se conecta en estrella es de 500 ms, mientras
-que el tiempo que se espera antes de verificar si se está bombeando es igual
-a 1 minuto, por si acaso la bomba estaba descargada.
-	usa funcion vTaskDelay()
- + 
-4.9.3.  Ejemplo: tarea periódica (Pagina 125)
-	usa funcion vTaskDelayUntil()
+/* Copyright 2020
+4.8.1. Rutinas de atención a interrupción en FreeRTOS
+En FreeRTOS existen dos tipos de llamadas al
+sistema operativo: las normales y las diseñadas para ser llamadas desde
+una rutina de atención a interrupción.
+
+Las funciones diseñadas para ser llamadas desde las rutinas de aten-
+ción a interrupción tienen dos diferencias con respecto a las normales:
+- No pueden bloquearse, al estar pensadas para ser llamadas desde una
+interrupción.
+- No producen cambios de contexto, aunque la escritura o recepción de
+datos de la cola despierten a una tarea más prioritaria que la tarea
+que estaba ejecutándose antes de que se produjese la interrupción.
+En este caso, el cambio de contexto es necesario hacerlo “a mano” al
+finalizar la ejecución de la rutina de interrupción, de forma que desde
+la interrupción se vuelva a la rutina recién despertada.
+
+Ejemplo de manejo de colas desde una rutina de atención a
+interrupción usando FreeRTOS (Pagina 120 )
+
+En dicho ejemplo se usa una cola para comunicar
+la rutina de interrupción del puerto serie con la tarea de primer plano. La
+rutina de atención a la interrupción se limita a copiar el carácter recibido
+de la UART en la cola. La tarea de primer plano se encarga de verificar si
+hay caracteres nuevos en la cola en cada iteración del bucle de scan. Si hay
+un carácter nuevo, lo saca de la cola y lo copia en una cadena denominada
+mensaje . Cuando recibe un mensaje completo, indicado por la recepción del
+carácter de retorno de carro, se procesa dicho mensaje
  */
 
 /*==================[inclusions]=============================================*/
@@ -22,15 +36,14 @@ a 1 minuto, por si acaso la bomba estaba descargada.
 #include "FreeRTOS.h"
 #include "FreeRTOSConfig.h"
 #include "task.h"
-#include "semphr.h"
+#include "queue.h"
 
-#include "main.h"
 
 /*==================[macros and definitions]=================================*/
 
-#define PRIO_ARRANQUE 2 
-#define PRIO_TAR_PER 3	//mayor prioridad para tarea periodica ... para que no cambie el periodo ..
-#define TAM_PILA 1024
+#define TAM_COLA 10
+#define TAM_PILA 512
+#define PRIO_PROC_SER 2
 
 /*==================[internal data declaration]==============================*/
 
@@ -40,6 +53,8 @@ a 1 minuto, por si acaso la bomba estaba descargada.
 
 /*==================[external data definition]===============================*/
 
+QueueHandle_t cola_rec ; /* Cola para recibir */
+
 /*==================[internal functions definition]==========================*/
 
 static void InitHardware(void)
@@ -48,77 +63,93 @@ static void InitHardware(void)
     Board_Init();
 }
 
-//uint8_t LeeEntradas(void)
-//{
-//	return Buttons_GetStatus();
-//}
-
-void ConectaTensionEstrella(void)
+static void InitSerie(void)
 {
-	Board_LED_Set(3, TRUE); //prende "LED 1" (amarillo)
+
+	/* Primero se crea la cola */
+	cola_rec = xQueueCreate (TAM_COLA , sizeof (char));
+	if( cola_rec == NULL ){
+		Board_LED_Set(4, TRUE); /* prende "LED 2" (rojo) indica error Fatal */
+		while (1); /* Se queda bloqueado el sistema hasta que
+					venga el técnico de mantenimiento */
+	}
+    Chip_UART_Init(LPC_USART2);
+	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
+	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
+	Chip_UART_SetupFIFOS(LPC_USART2, UART_FCR_FIFO_EN | UART_FCR_TRG_LEV3); /* Modify FCR (FIFO Control Register)*/
+//  Chip_UART_SetupFIFOS(LPC_UART, (UART_FCR_FIFO_EN | UART_FCR_TRG_LEV2));
+	Chip_UART_TXEnable(LPC_USART2); /* Enable UART Transmission */
+	Chip_SCU_PinMux(7, 1, MD_PDN, FUNC6);              /* P7_1,FUNC6: UART2_TXD */
+	Chip_SCU_PinMux(7, 2, MD_PLN|MD_EZI|MD_ZI, FUNC6); /* P7_2,FUNC6: UART2_RXD */
+	
+	Chip_UART_IntEnable(LPC_USART2, UART_IER_RBRINT);
+//  Chip_UART_IntEnable(LPC_UART, (UART_IER_RBRINT | UART_IER_RLSINT));
+    NVIC_SetPriority(USART2_IRQn, 1);
+//  NVIC_SetPriority(UARTx_IRQn, 1);
+	NVIC_EnableIRQ(USART2_IRQn);
 }
 
-void ConectaTensionTriangulo(void)
+static void SeriePuts(char *data)
 {
-	Board_LED_Set(3, FALSE); //apaga "LED 1" (amarillo)
-	Board_LED_Set(5, TRUE); //enciende "LED 3" (verde)
-}
-
-void DesconectaTension(void)
-{
-	Board_LED_Set(5, FALSE); //apaga "LED 3" (verde)
-}
-
-void AlarmaFalloArranque(void)
-{
-	Board_LED_Set(4, TRUE); //enciende "LED 2" (rojo)
-	while (1); /* Se queda bloqueado el sistema hasta que
-				venga el técnico de mantenimiento */
-}
-
-uint8_t PresionOK(void)
-{
-	return (Buttons_GetStatus() & 0x01); //solo si se esta apretando la "TEC 1", retorna != 0 
-}
-
-void ArrancaBomba(void)
-{
-	ConectaTensionEstrella();
-	vTaskDelay (1000/portTICK_RATE_MS); /*1000 ms ... o 1 seg */
-	ConectaTensionTriangulo();
-	vTaskDelay (5000/portTICK_RATE_MS); /*5 seg */
-	if( PresionOK()==0){ /* No hay presión . Por tanto la
-							bomba no está funcionando */
-		DesconectaTension();
-		AlarmaFalloArranque();
+	while(*data != 0)
+	{
+		while ((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_THRE) == 0) {}
+		Chip_UART_SendByte(LPC_USART2, *data);
+		data++;
 	}
 }
 
-void Arranque(void *pvParameters)
+static void ProcesaMensaje(char *data)
 {
-	while(1){
-		ArrancaBomba();
-		vTaskDelay (10000/portTICK_RATE_MS); // espera 10 segundos mas y reinicia todo
-		Board_LED_Set(5, FALSE); // apaga  "LED 3" (verde)
+	SeriePuts(data); //hace eco
+}
+
+void ProcesaRecSerie (void * pvParameters)
+{
+	static char mensaje [100];
+	static uint8_t indice = 0;
+	char car_rec ;
+	
+	while (1){		
+
+		if((xQueueReceive (cola_rec , &car_rec ,
+			(portTickType) 0xFFFFFFFF )) == pdTRUE){  //portMAX_DELAY espera sin timeout
+			/* Se asegura comparando con pdTRUE que ha recibido un carácter de la cola.
+				Se almacena */
+			Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
+			mensaje[indice] = car_rec;
+            printf("%c\n",car_rec);
+			if(mensaje[indice] == '\r'){
+				/* El \n indica el final del mensaje */
+				mensaje[indice+1] = '\n'; //agrego un new line al carriage return
+				mensaje[indice+2] = '\0';
+				ProcesaMensaje(mensaje);
+				indice = 0;
+				Board_LED_Toggle(4); //cambio estado "LED 2" (rojo)
+			}else{
+				indice ++;
+			}
+		}
 	}
 }
 
-void TareaPeriodica (void *pvParameters)
+void UART2_IRQHandler(void)
 {
-	portTickType xLastWakeTime;
-	portTickType xPeriodo;
-	uint8_t valor;
-	
-	xPeriodo = 500/portTICK_RATE_MS ; /* Periodo 500 ms */
-	
-	/* Inicializa xLastWakeTime con el tiempo actual */
-	xLastWakeTime = xTaskGetTickCount();
-	while (1){
-		vTaskDelayUntil (&xLastWakeTime, xPeriodo ); /* Espera
-										el siguiente periodo */
-		/* Realiza su proceso */
-		Chip_GPIO_SetPortValue(LPC_GPIO_PORT, 5, valor); /* cambia valor de RGB ? */
-		valor++;	
+	BaseType_t xTaskWokenByPost = pdFALSE;
+	char car_recibido ;
+
+	Board_LED_Toggle(5); //cambio estado "LED 3" (verde)
+	if((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR) == 0){
+		/* Llegó un carácter . Se lee del puerto serie */
+		car_recibido = Chip_UART_ReadByte(LPC_USART2);
+		/* Y se envía a la cola de recepción */
+		xQueueSendFromISR(cola_rec, &car_recibido, &xTaskWokenByPost);
+        //validar si retorno con errQUEUE_FULL o pdPASS
+		if( xTaskWokenByPost == pdTRUE ){
+			portYIELD_FROM_ISR( xTaskWokenByPost );
+            /* Si el envío a la cola ha despertado una tarea ,
+            se fuerza un cambio de contexto */
+		}
 	}
 }
 
@@ -127,14 +158,12 @@ void TareaPeriodica (void *pvParameters)
 int main(void)
 {
 	InitHardware(); /* Inicializa el Hardware del microcontrolador */
+	InitSerie();
 
 	/* Se crean las tareas */
-	xTaskCreate(Arranque, (const char *)"Arranque", TAM_PILA, NULL, PRIO_ARRANQUE, NULL );
-//	xTaskCreate(TareaPeriodica, (const char *)"TareaPerio", TAM_PILA, NULL, PRIO_TAR_PER, NULL );
-	
+	xTaskCreate(ProcesaRecSerie, (const char *)"ProcSerie", TAM_PILA, NULL, PRIO_PROC_SER, NULL );
+
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
 }
-
-/** @} doxygen end group definition */
 
 /*==================[end of file]============================================*/
