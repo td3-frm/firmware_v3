@@ -1,7 +1,7 @@
-/* Copyright 2017
+/*  Copyright 2020 
         codigo basado en el libro Sistemas Empotrados en tiempo real 
+        José Daniel Muñoz Frías
 1.6.2.  Datos compartidos (Pagina 21)
-
 Al trasladar los procesos lentos a la tarea de primer plano se soluciona
 el problema de la latencia, pero por desgracia se crea un nuevo problema:
 la comunicación entre tareas que se ejecutan asíncronamente.

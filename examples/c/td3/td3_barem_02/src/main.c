@@ -1,6 +1,8 @@
-/* Copyright 2017
+/*  Copyright 2020 
         codigo basado en el libro Sistemas Empotrados en tiempo real 
+        José Daniel Muñoz Frías
 1.6.1.  Latencia en sistemas primer plano / segundo plano (Pagina 18)
+
 La tarea mostrada sirve para implantar un reloj. Se ha supuesto que
 esta tarea está asociada a la interrupción de un temporizador, el cual se
 ha configurado para que interrumpa cada milisegundo. Supóngase ahora

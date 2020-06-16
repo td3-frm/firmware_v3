@@ -1,7 +1,9 @@
-/* Copyright 2017
+/*  Copyright 2020 
         codigo basado en el libro Sistemas Empotrados en tiempo real 
+        José Daniel Muñoz Frías
 1.5     Procesamiento Secuecial (Pagina 8)
 1.5.1 Ejemplo: Un Termostato digital
+
 se muestra un ejemplo sencillo de un sistema en tiempo real implantado mediante 
 procesamiento secuencial. El sistema es un termostato para la calefacción. 
 Como se puede observar, el sistema consta de cuatro tareas que se ejecutan continuamente:

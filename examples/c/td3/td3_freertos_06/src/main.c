@@ -1,6 +1,9 @@
-/* Copyright 2017
+/*  Copyright 2020 - FreeRTOS Kernel V10.0.1
+
 	codigo basado en el libro Sistemas Empotrados en tiempo real 
+    José Daniel Muñoz Frías
 4.5.1. Ejemplo (Pagina 96) (Ejemplo usando FreeRTOS) 
+
 Para ilustrar el funcionamiento de los semáforos, supóngase que en un
 sistema se necesita enviar la hora constantemente (en realidad sólo cuando
 cambie) por el puerto serie y el estado de 8 entradas digitales. Por tanto,

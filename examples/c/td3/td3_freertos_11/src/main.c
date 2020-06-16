@@ -1,49 +1,47 @@
-/* Copyright 2020
-4.8.1. Rutinas de atención a interrupción en FreeRTOS
-En FreeRTOS existen dos tipos de llamadas al
-sistema operativo: las normales y las diseñadas para ser llamadas desde
-una rutina de atención a interrupción.
+/*  Copyright 2020 - FreeRTOS Kernel V10.0.1
 
-Las funciones diseñadas para ser llamadas desde las rutinas de aten-
-ción a interrupción tienen dos diferencias con respecto a las normales:
-- No pueden bloquearse, al estar pensadas para ser llamadas desde una
-interrupción.
-- No producen cambios de contexto, aunque la escritura o recepción de
-datos de la cola despierten a una tarea más prioritaria que la tarea
-que estaba ejecutándose antes de que se produjese la interrupción.
-En este caso, el cambio de contexto es necesario hacerlo “a mano” al
-finalizar la ejecución de la rutina de interrupción, de forma que desde
-la interrupción se vuelva a la rutina recién despertada.
+    codigo NO basado en el libro Sistemas Empotrados en tiempo real 
+    José Daniel Muñoz Frías
+4.5.6.  Abrazo mortal (pagina 105)
 
-Ejemplo de manejo de colas desde una rutina de atención a
-interrupción usando FreeRTOS (Pagina 120 )
+Otro problema que puede ocurrir cuando se usan semáforos se ilustra a continuación:
+Dos tareas y dos semáforos.
+Supóngase que inicialmente ambos semáforos están libres. Supóngase también que
+se está ejecutando la Tarea1 y que pide el semáforo p_sem_a . Como está
+libre, la llamada a xSemaphoreTake retornará inmediatamente. Supóngase ahora
+que antes de que a la Tarea1 le de tiempo a realizar la segunda llamada
+a xSemaphoreTake se produce un cambio de contexto. Supóngase que este cam-
+bio de contexto hace que comience a ejecutarse la Tarea2. Ésta pedirá en
+primer lugar el semáforo p_sem_b , el cual como está libre se le dará. A con-
+tinuación pedirá el semáforo p_sem_a , pero como está cogido por la Tarea1,
+la Tarea2 se bloqueará a la espera de que dicho semáforo quede libre (la
+llamada a xSemaphoreTake no retornará). Se producirá ahora un nuevo cambio
+de contexto, pues la Tarea2 no puede continuar. Cuando se ejecute la Ta-
+rea1, fruto de este cambio de contexto, ésta continuará la ejecución donde
+la dejó, y pedirá el semáforo p_sem_b . Como este semáforo está cogido por
+la Tarea2, la Tarea1 volverá a bloquearse. Como la Tarea1 está esperando
+el semáforo p_sem_b que sólo puede soltar la Tarea2 y la Tarea2 está es-
+perando el semáforo p_sem_a que sólo puede soltar la Tarea1, ninguna de
+las tareas podrá ejecutarse más. Esto es lo que se conoce como un abrazo
+mortal (Deadlock en inglés).
 
-En dicho ejemplo se usa una cola para comunicar
-la rutina de interrupción del puerto serie con la tarea de primer plano. La
-rutina de atención a la interrupción se limita a copiar el carácter recibido
-de la UART en la cola. La tarea de primer plano se encarga de verificar si
-hay caracteres nuevos en la cola en cada iteración del bucle de scan. Si hay
-un carácter nuevo, lo saca de la cola y lo copia en una cadena denominada
-mensaje . Cuando recibe un mensaje completo, indicado por la recepción del
-carácter de retorno de carro, se procesa dicho mensaje
- */
-
-/*==================[inclusions]=============================================*/
+ *  */
+ /*==================[inclusions]=============================================*/
 
 #include "board.h"
-#include "chip.h"
-
 #include "FreeRTOS.h"
-#include "FreeRTOSConfig.h"
 #include "task.h"
-#include "queue.h"
-
+#include "semphr.h"
 
 /*==================[macros and definitions]=================================*/
 
-#define TAM_COLA 10
-#define TAM_PILA 512
-#define PRIO_PROC_SER 2
+#define PRIO_TAREA1 1
+#define PRIO_TAREA2 2
+#define TAM_PILA 150
+#define mainDELAY_LOOP_COUNT        ( 0xffffff )
+
+SemaphoreHandle_t p_sem_a;
+SemaphoreHandle_t p_sem_b;
 
 /*==================[internal data declaration]==============================*/
 
@@ -53,115 +51,69 @@ carácter de retorno de carro, se procesa dicho mensaje
 
 /*==================[external data definition]===============================*/
 
-QueueHandle_t cola_rec ; /* Cola para recibir */
-
 /*==================[internal functions definition]==========================*/
 
-static void InitHardware(void)
+static void vTarea1(void *pvParameters)
 {
-    SystemCoreClockUpdate();
-    Board_Init();
+  const char *pcTaskName = "Tarea 1 menos prioritaria\r\n";
+  printf( pcTaskName );
+
+   for( ;; ) {
+      xSemaphoreTake( p_sem_b, portMAX_DELAY);
+      Board_LED_Set(3,TRUE); //Enciende "LED 1" ( amarillo )
+      xSemaphoreTake( p_sem_a, portMAX_DELAY);
+      /* El puerto serie está libre */
+      printf( pcTaskName );
+      xSemaphoreGive(p_sem_b);
+      Board_LED_Set(3,FALSE); //Apaga "LED 1" ( amarillo )
+      xSemaphoreGive(p_sem_a);
+   }
 }
 
-static void InitSerie(void)
+static void vTarea2(void *pvParameters)
 {
+   const char *pcTaskName = "Tarea 2 mas prioritaria \r\n";
+   const TickType_t xDelay50ms = pdMS_TO_TICKS( 50UL );
+   const TickType_t xDelay200ms = pdMS_TO_TICKS( 200UL );
+   printf( pcTaskName );
 
-	/* Primero se crea la cola */
-	cola_rec = xQueueCreate (TAM_COLA , sizeof (char));
-	if( cola_rec == NULL ){
-		Board_LED_Set(4, TRUE); /* prende "LED 2" (rojo) indica error Fatal */
-		while (1); /* Se queda bloqueado el sistema hasta que
-					venga el técnico de mantenimiento */
-	}
-    Chip_UART_Init(LPC_USART2);
-	Chip_UART_SetBaud(LPC_USART2, 115200);  /* Set Baud rate */
-	Chip_UART_ConfigData(LPC_USART2, (UART_LCR_WLEN8 | UART_LCR_SBS_1BIT));
-	Chip_UART_SetupFIFOS(LPC_USART2, UART_FCR_FIFO_EN | UART_FCR_TRG_LEV3); /* Modify FCR (FIFO Control Register)*/
-	Chip_UART_TXEnable(LPC_USART2); /* Enable UART Transmission */
-	Chip_SCU_PinMux(7, 1, MD_PDN, FUNC6);              /* P7_1,FUNC6: UART2_TXD */
-	Chip_SCU_PinMux(7, 2, MD_PLN|MD_EZI|MD_ZI, FUNC6); /* P7_2,FUNC6: UART2_RXD */
-	
-	Chip_UART_IntEnable(LPC_USART2, UART_IER_RBRINT);
-    NVIC_SetPriority(USART2_IRQn, (1<<__NVIC_PRIO_BITS) - 1);
-	NVIC_EnableIRQ(USART2_IRQn);
-}
+   for( ;; ) {
+      xSemaphoreTake( p_sem_a, portMAX_DELAY);
+      Board_LED_Set(5,TRUE); //Enciende "LED 3" ( verde )
+      vTaskDelay( xDelay50ms ); //para que SIEMPRE haya Deadlock ;-)
+      xSemaphoreTake( p_sem_b, portMAX_DELAY);
+      //if ((xSemaphoreTake( p_sem_b, xDelay200ms)) == pdPASS) {
+      /* El puerto serie está libre */
+      printf( pcTaskName );
+      xSemaphoreGive(p_sem_a);
+      Board_LED_Set(5,FALSE); //Apaga "LED 3" ( verde )
+      xSemaphoreGive(p_sem_b);
+      /*}
+      else { 
+        xSemaphoreGive(p_sem_a);
+        vTaskDelay( xDelay50ms ); //para que SIEMPRE haya Deadlock ;-)
+        }*/
 
-static void SeriePuts(char *data)
-{
-	while(*data != 0)
-	{
-		while ((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_THRE) == 0) {}
-		Chip_UART_SendByte(LPC_USART2, *data);
-		data++;
-	}
-}
-
-static void ProcesaMensaje(char *data)
-{
-	SeriePuts(data); //hace eco
-}
-
-void ProcesaRecSerie (void * pvParameters)
-{
-	static char mensaje [100];
-	static uint8_t indice = 0;
-	char car_rec ;
-	
-	while (1){		
-
-		if((xQueueReceive (cola_rec , &car_rec ,
-			(portTickType) 0xFFFFFFFF )) == pdTRUE){  //portMAX_DELAY espera sin timeout
-			/* Se asegura comparando con pdTRUE que ha recibido un carácter de la cola.
-				Se almacena */
-			Board_LED_Toggle(0); //cambio estado "LED RGB" (rojo)
-			mensaje[indice] = car_rec;
-            printf("%c\r\n",car_rec);
-			if(mensaje[indice] == '\r'){
-				/* El \n indica el final del mensaje */
-				mensaje[indice+1] = '\n'; //agrego un new line al carriage return
-				mensaje[indice+2] = '\0';
-				ProcesaMensaje(mensaje);
-				indice = 0;
-				Board_LED_Toggle(4); //cambio estado "LED 2" (rojo)
-			}else{
-				indice ++;
-			}
-		}
-	}
-}
-
-void UART2_IRQHandler(void)
-{
-	BaseType_t xTaskWokenByPost = pdFALSE;
-	char car_recibido ;
-
-	Board_LED_Toggle(5); //cambio estado "LED 3" (verde)
-	if((Chip_UART_ReadLineStatus(LPC_USART2) & UART_LSR_RDR) == 1){
-		/* Llegó un carácter . Se lee del puerto serie */
-		car_recibido = Chip_UART_ReadByte(LPC_USART2);
-		Board_LED_Toggle(3); //cambio estado LED amarillo
-		/* Y se envía a la cola de recepción */
-		xQueueSendFromISR(cola_rec, &car_recibido, &xTaskWokenByPost);
-        //validar si retorno con errQUEUE_FULL o pdPASS
-		if( xTaskWokenByPost == pdTRUE ){
-			portYIELD_FROM_ISR( xTaskWokenByPost );
-            /* Si el envío a la cola ha despertado una tarea ,
-            se fuerza un cambio de contexto */
-		}
-	}
+   }
 }
 
 /*==================[external functions definition]==========================*/
 
 int main(void)
 {
-	InitHardware(); /* Inicializa el Hardware del microcontrolador */
-	InitSerie();
-
+    //Se inicializa HW
 	/* Se crean las tareas */
-	xTaskCreate(ProcesaRecSerie, (const char *)"ProcSerie", TAM_PILA, NULL, PRIO_PROC_SER, NULL );
+	p_sem_a = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
+	p_sem_b = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
+
+	xTaskCreate(vTarea1, (const char *)"Tarea1", TAM_PILA, NULL, PRIO_TAREA1, NULL );
+	xTaskCreate(vTarea2, (const char *)"Tarea2", TAM_PILA, NULL, PRIO_TAREA2, NULL );
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
+    //Nunca llegara a ese lazo  .... espero
+     for( ;; );
+     return 0;
+
 }
 
 /*==================[end of file]============================================*/

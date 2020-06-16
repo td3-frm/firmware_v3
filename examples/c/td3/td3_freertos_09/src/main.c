@@ -1,6 +1,9 @@
-/* Copyright 2020
- */
-/*4.7.  Colas para comunicar tareas (Pagina 108)
+/*  Copyright 2020 - FreeRTOS Kernel V10.0.1
+
+    codigo basado en el libro Sistemas Empotrados en tiempo real 
+    José Daniel Muñoz Frías
+4.7.  Colas para comunicar tareas (Pagina 108)
+
  Cuando existen varios generadores de datos y un sólo consumidor y
 no se desea bloquear a los generadores a la espera de que el consu-
 midor obtenga los datos.

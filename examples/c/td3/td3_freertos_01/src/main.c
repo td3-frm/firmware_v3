@@ -1,4 +1,6 @@
-/* este codigo NO esta en el libro de Sistemas Empotrados en tiempo real
+/*  Copyright 2020 - FreeRTOS Kernel V10.0.1
+
+ * este codigo NO esta en el libro de Sistemas Empotrados en tiempo real
  * pero el objetivo es intriducir a FreeRTOS usando solo una  tarea que 
  * imprime por el puerto serie, e invocando al planificador
  *

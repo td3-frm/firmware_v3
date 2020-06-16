@@ -1,4 +1,8 @@
-/* 
+/*  Copyright 2020 - FreeRTOS Kernel V10.0.1
+
+    codigo NO basado en el libro Sistemas Empotrados en tiempo real 
+    José Daniel Muñoz Frías
+ 
 4.5.5. Inversión de prioridad (pagina 104)
 El uso de semáforos puede producir una inversión de prioridad, 
 que consiste en que una tarea de menor prioridad impide
@@ -76,7 +80,7 @@ int main(void)
     //Se inicializa HW
 	/* Se crean las tareas */
 	sem_exclu = xSemaphoreCreateBinary ();  //se inicializa por defecto en 0
-//	sem_exclu = xSemaphoreCreateMutex ();  //se inicializa por defecto en 0
+//	sem_exclu = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
     xSemaphoreGive (sem_exclu); //caso contrario ninguna tarea trabaja
 
 	xTaskCreate(vTarea1, (const char *)"Tarea1", TAM_PILA, NULL, PRIO_TAREA1, NULL );
