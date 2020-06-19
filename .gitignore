@@ -64,4 +64,5 @@ out/
 _programs/
 scripts/user/user_preferences.cfg
 scripts/openocd/lpc4337_old.cfg
+documentation/
 board.mk
