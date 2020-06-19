@@ -63,5 +63,5 @@ out/
 # User file and folders
 _programs/
 scripts/user/user_preferences.cfg
-program.mk
+scripts/openocd/lpc4337_old.cfg
 board.mk
