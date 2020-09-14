@@ -2,10 +2,10 @@
 # Program path and name ------------------------------------------------
 
 # Program path and name default values
-#PROGRAM_PATH = examples/c/sapi/gpio
-#PROGRAM_NAME = blinky
-PROGRAM_PATH = examples/c
-PROGRAM_NAME = app
+PROGRAM_PATH = examples/c/sapi/gpio
+PROGRAM_NAME = blinky
+#PROGRAM_PATH = examples/c
+#PROGRAM_NAME = app
 #-----------------------------------------------------------------------
 #PROGRAM_PATH = examples/c/lab
 #PROGRAM_NAME = freeRTOS_basic
