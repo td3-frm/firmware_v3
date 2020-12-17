@@ -266,17 +266,6 @@ bool Board_TEC_GetStatus(uint8_t button)
                                 GpioButtons[button].pin);
 }
 
-// carlost
-bool Board_GPIO_GetStatus(uint8_t puerto)
-{
-   if (puerto >= GPIO_PORTS_SIZE) {
-      return false;
-   }
-
-   return Chip_GPIO_GetPinState(LPC_GPIO_PORT, GpioPorts[puerto].port,
-                                GpioPorts[puerto].pin);
-}
-// carlost
 bool Board_GPIO_GetStatus(uint8_t port_num)
 {
    if (port_num >= GPIO_PORTS_SIZE) {
