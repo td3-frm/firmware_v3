@@ -23,7 +23,7 @@ niendo que la interrupción se ha producido en la llamada que imprime la
 segunda línea:
 13:13:59
 13:13:00
-13:14:00
+13:14:01
 nota: en minicom velocidad en 300 bauds -> ctr+a z o
 
  */
@@ -128,6 +128,7 @@ int main(void)
 
 	for(;;){
 		ImprimeHora();
+        /* Resto de tareas de primer plano */
 	}
 }
 

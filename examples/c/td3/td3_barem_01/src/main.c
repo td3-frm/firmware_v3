@@ -16,6 +16,10 @@ consistente en que si la temperatura es mayor que la consigna
 se apaga la calefacción y si es inferior se enciende.
 - Por último, la cuarta tarea se encarga de encender o apagar la cale-
 facción en función de la salida de la tarea de control
+
+NOTA: para simplicidad del Ejemplo, se simula la lectura el conversorAD, 
+    Si calefaccion ON  -> sube la termperatura
+    Si calefaccion OFF -> baja la termperatura
  */
 
 /*==================[inclusions]=============================================*/
@@ -176,7 +180,7 @@ int main(void)
 		MedirTemperatura();
 		Controlar();
 		ImprimirTemp();
-        TareaInactiva();
+        //TareaInactiva();
         //delay(DELAY_MS);
     }
 }

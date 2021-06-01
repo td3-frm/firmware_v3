@@ -111,7 +111,7 @@ int main(void)
 	InitSerie(); /* Inicializa puerto serie */
 
 	NVIC_EnableIRQ(RITIMER_IRQn);
-
+    //ninguna tarea de primer plano
 	for(;;);
 }
 
