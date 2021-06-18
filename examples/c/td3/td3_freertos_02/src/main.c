@@ -23,8 +23,8 @@ void vTaskFunction( void *pvParameters )
    TickType_t xLastWakeTime;
    const TickType_t xDelay500ms = pdMS_TO_TICKS( 500UL );
 
-   //printf ( "tics de delay: %d\r\n",xDelay500ms );
-   printf ( "cuantos tics por ms: %d\r\n",portTICK_RATE_MS );
+   printf ( "tics de delay: %d\r\n",xDelay500ms );
+   //printf ( "cuantos tics por ms: %d\r\n",portTICK_RATE_MS );
 
    /* As per most tasks, this task is implemented in an infinite loop. */
    for( ;; ) {
@@ -32,8 +32,8 @@ void vTaskFunction( void *pvParameters )
       xLastWakeTime = xTaskGetTickCount();
       printf ( "time %d\r\n",xLastWakeTime );
 
-      vTaskDelay( 500 / portTICK_RATE_MS );
-      //vTaskDelay( xDelay500ms );
+//    vTaskDelay( 500 / portTICK_RATE_MS ); 
+      vTaskDelay( xDelay500ms );
    }
 }
 

@@ -39,13 +39,16 @@ void vContinuousProcessingTask( void *pvParameters )
 void vPeriodicTask( void *pvParameters )
 {
    TickType_t xLastWakeTime;
+   TickType_t xWakeTime;
    const TickType_t xDelay50ms = pdMS_TO_TICKS( 50UL );
 
    xLastWakeTime = xTaskGetTickCount(); /* se inicializa la variable con la 
    actual cantidad de ticks. Luego es manejada por la API de vTaskDelayUntil()*/
 
    for( ;; ) {
+      xWakeTime = xTaskGetTickCount();
       vPrintString( "Periodic task is running\r\n" );
+      printf ("%d \r\n",xWakeTime);
       Board_LED_Toggle(4); //titila "LED 2" ( rojo )
 
       /* pasa a READY cada 50ms. */
@@ -60,7 +63,7 @@ int main( void )
    xTaskCreate( vContinuousProcessingTask, "Task 1", configMINIMAL_STACK_SIZE, (void*)pcTextForTask1, tskIDLE_PRIORITY+1, NULL );
    xTaskCreate( vContinuousProcessingTask, "Task 2", configMINIMAL_STACK_SIZE, (void*)pcTextForTask2, tskIDLE_PRIORITY+1, NULL );
 
-   xTaskCreate( vPeriodicTask, "Task 3", configMINIMAL_STACK_SIZE*2, (void*)pcTextForPeriodicTask, tskIDLE_PRIORITY+1, NULL );
+   xTaskCreate( vPeriodicTask, "Task 3", configMINIMAL_STACK_SIZE*2, (void*)pcTextForPeriodicTask, tskIDLE_PRIORITY+2, NULL );
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     //Nunca llegara a ese lazo  .... espero

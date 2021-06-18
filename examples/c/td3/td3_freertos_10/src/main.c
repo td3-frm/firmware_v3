@@ -18,8 +18,6 @@ la ejecución de una tarea de mayor prioridad.
 
 /*==================[macros and definitions]=================================*/
 
-#define PRIO_TAREA1 1
-#define PRIO_TAREA2 2
 #define TAM_PILA 150
 #define mainDELAY_LOOP_COUNT        ( 0xffffff )
 
@@ -83,8 +81,8 @@ int main(void)
 //	sem_exclu = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
     xSemaphoreGive (sem_exclu); //caso contrario ninguna tarea trabaja
 
-	xTaskCreate(vTarea1, (const char *)"Tarea1", TAM_PILA, NULL, PRIO_TAREA1, NULL );
-	xTaskCreate(vTarea2, (const char *)"Tarea2", TAM_PILA, NULL, PRIO_TAREA2, NULL );
+	xTaskCreate(vTarea1, (const char *)"Tarea1", TAM_PILA, NULL, tskIDLE_PRIORITY+1 , NULL );
+	xTaskCreate(vTarea2, (const char *)"Tarea2", TAM_PILA, NULL, tskIDLE_PRIORITY+2 , NULL );
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     //Nunca llegara a ese lazo  .... espero

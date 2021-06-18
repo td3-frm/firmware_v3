@@ -24,8 +24,6 @@
 /*==================[internal functions declaration]=========================*/
 
 /*==================[internal data definition]===============================*/
-const char *pcTextoTarea1 = "Tarea1 is running\r\n";
-const char *pcTextoTarea2 = "Tarea2 is running\r\n";
 
 /*==================[external data definition]===============================*/
 
@@ -33,28 +31,31 @@ const char *pcTextoTarea2 = "Tarea2 is running\r\n";
 
 static void vTarea(void *pvParameters)
 {
+   uint8_t seg = 0;
+   uint8_t min = 0;
+   uint8_t hor = 0;
 
-   const TickType_t xDelay500ms = pdMS_TO_TICKS( 500UL ); //macro para convertir ms en ticks
-   const TickType_t xDelay200ms = pdMS_TO_TICKS( 200UL ); //macro para convertir ms en ticks
-   char *pcTaskName;
-   /* The string to print out is passed in via the parameter.  Cast this to a
-   character pointer. */
-   pcTaskName = ( char * ) pvParameters;
+   const TickType_t xDelay1000ms = pdMS_TO_TICKS( 1000UL ); //macro para convertir ms en ticks
+   //probar luego aumentando el configTICK_RATE_HZ
+   TickType_t xLastWakeTime = xTaskGetTickCount(); 
+
    for ( ;; ){
-       printf( pcTaskName );
-       if ( pcTaskName == "Tarea1 is running\r\n" ){
-       Board_LED_Toggle(3); //titila "LED 1" ( amarillo )
-       vTaskDelay( xDelay200ms );  // tarea pasa a estado Bloqueado hasta que expira timer
+       //vTaskDelay( xDelay1000ms );  
+       vTaskDelayUntil( &xLastWakeTime, xDelay1000ms );
+       seg++;
+       Board_LED_Toggle(5);
+       printf (" %02d: %02d: %02d  nro quantum: %d \r\n", hor, min, seg, xTaskGetTickCount() );
+       if(seg == 60){
+           seg = 0;
+           min ++;
+           if(min == 60){
+               min = 0;
+               hor ++;
+               if(hor == 24){
+                   hor = 0;
+              }
+           }
        }
-       else {
-       Board_LED_Toggle(5); //titila "LED 3" ( verde )
-       //vTaskDelay(en_ticks)
-       vTaskDelay( xDelay500ms );  // tarea pasa a estado Bloqueado hasta que expira timer
-//       vTaskDelay( 1000 / portTICK_RATE_MS);  // tarea pasa a estado Bloqueado hasta que expira timer
-       //configTICK_RATE_HZ = 100 en el ../include , 1 tick cada 10 ms
-       //#define portTICK_RATE_MS          ( ( TickType_t ) 1000 / configTICK_RATE_HZ )
-       }
-
    }
 }
 
@@ -65,8 +66,7 @@ int main(void)
 {
     //Se inicializa HW
 	/* Se crean las tareas */
-	xTaskCreate(vTarea, (const char *)"Tarea1", TAM_PILA, (void*)pcTextoTarea1, tskIDLE_PRIORITY+1, NULL );
-	xTaskCreate(vTarea, (const char *)"Tarea2", TAM_PILA, (void*)pcTextoTarea2, tskIDLE_PRIORITY+2, NULL );
+	xTaskCreate(vTarea, (const char *)"Tarea1", TAM_PILA, NULL, tskIDLE_PRIORITY+1, NULL );
 
 	vTaskStartScheduler(); /* y por último se arranca el planificador . */
     //Nunca llegara a ese lazo  .... espero

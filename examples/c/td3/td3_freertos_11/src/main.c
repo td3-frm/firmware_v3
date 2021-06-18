@@ -53,46 +53,53 @@ SemaphoreHandle_t p_sem_b;
 
 /*==================[internal functions definition]==========================*/
 
-static void vTarea1(void *pvParameters)
+static void vTarea2(void *pvParameters)
 {
-  const char *pcTaskName = "Tarea 1 menos prioritaria\r\n";
-  printf( pcTaskName );
+  const char *pcTaskName = "Tarea 2 mas prioritaria";
+  const TickType_t xDelay50ms = pdMS_TO_TICKS( 60UL );
 
    for( ;; ) {
-      xSemaphoreTake( p_sem_b, portMAX_DELAY);
-      Board_LED_Set(3,TRUE); //Enciende "LED 1" ( amarillo )
       xSemaphoreTake( p_sem_a, portMAX_DELAY);
+      Board_LED_Set(3,TRUE); //Prende "LED 3" ( amarillo )
+      printf( "%s Toma sem_a \r\n", pcTaskName );
+      vTaskDelay( xDelay50ms ); //para que SIEMPRE haya Deadlock ;-)
+      xSemaphoreTake( p_sem_b, portMAX_DELAY);
+      Board_LED_Set(5,TRUE); //Enciende "LED 5" ( verde )
+      printf( "%s Toma sem_b \r\n", pcTaskName );
       /* El puerto serie está libre */
-      printf( pcTaskName );
-      xSemaphoreGive(p_sem_b);
-      Board_LED_Set(3,FALSE); //Apaga "LED 1" ( amarillo )
       xSemaphoreGive(p_sem_a);
+      Board_LED_Set(3,FALSE); //Apaga "LED 3" ( amarillo )
+      xSemaphoreGive(p_sem_b);
+      Board_LED_Set(5,FALSE); //Apaga "LED 5" ( verde )
    }
 }
 
-static void vTarea2(void *pvParameters)
+static void vTarea1(void *pvParameters)
 {
-   const char *pcTaskName = "Tarea 2 mas prioritaria \r\n";
+   const char *pcTaskName = "Tarea 1 menos prioritaria ";
    const TickType_t xDelay50ms = pdMS_TO_TICKS( 50UL );
    const TickType_t xDelay200ms = pdMS_TO_TICKS( 200UL );
-   printf( pcTaskName );
 
    for( ;; ) {
-      xSemaphoreTake( p_sem_a, portMAX_DELAY);
-      Board_LED_Set(5,TRUE); //Enciende "LED 3" ( verde )
-      vTaskDelay( xDelay50ms ); //para que SIEMPRE haya Deadlock ;-)
       xSemaphoreTake( p_sem_b, portMAX_DELAY);
-      //if ((xSemaphoreTake( p_sem_b, xDelay200ms)) == pdPASS) {
-      /* El puerto serie está libre */
-      printf( pcTaskName );
-      xSemaphoreGive(p_sem_a);
-      Board_LED_Set(5,FALSE); //Apaga "LED 3" ( verde )
-      xSemaphoreGive(p_sem_b);
-      /*}
+      Board_LED_Set(5,TRUE); //Prende "LED 5" ( verde )
+      printf( "%s Toma sem_b \r\n", pcTaskName );
+      xSemaphoreTake( p_sem_a, portMAX_DELAY);
+      //if ((xSemaphoreTake( p_sem_a, xDelay200ms)) == pdPASS) {
+         // Board_LED_Set(3,TRUE); //Prende "LED 3" ( amarillo )
+          printf( "%s Toma sem_a \r\n", pcTaskName );
+          /* El puerto serie está libre */
+          xSemaphoreGive(p_sem_b);
+          Board_LED_Set(5,FALSE); //Apaga "LED 5" ( verde )
+          xSemaphoreGive(p_sem_a);
+          Board_LED_Set(3,FALSE); //Apaga "LED 3" ( amarillo )
+     /* }
       else { 
-        xSemaphoreGive(p_sem_a);
-        vTaskDelay( xDelay50ms ); //para que SIEMPRE haya Deadlock ;-)
-        }*/
+        xSemaphoreGive(p_sem_b);
+        Board_LED_Set(5,FALSE); //Apaga "LED 5" ( verde )
+        printf( "Sale temporalmente de interbloqueo por timeout ... \r\n" );
+        vTaskDelay( xDelay50ms ); 
+        }*/ 
 
    }
 }
@@ -103,6 +110,7 @@ int main(void)
 {
     //Se inicializa HW
 	/* Se crean las tareas */
+    printf("iniciando ...\r\n");
 	p_sem_a = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
 	p_sem_b = xSemaphoreCreateMutex ();  //se inicializa por defecto en 1
 
