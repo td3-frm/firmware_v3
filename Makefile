@@ -273,6 +273,12 @@ else
 download: .download_flash
 endif
 
+# Connection to remote OpenOCD server for download
+write: $(TARGET)
+        #$(Q)$(OOCD) -f $(OOCD_SCRIPT) > $(TARGET).log &
+        #$(Q)arm-none-eabi-gdb -batch $(TARGET) -x scripts/openocd/gdbwrite
+        $(Q)$(GDB) $(TARGET) -x /usr/share/openocd/gdb/gdbwrite
+
 # Erase Flash memory of board
 erase:
 	@echo ERASE FLASH
